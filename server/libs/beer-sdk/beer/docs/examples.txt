@@ -1,0 +1,53 @@
+Description of the examples
+
+    Date: 14-Nov-2005/11:26:12+1:00
+    
+===General principle
+
+The Listener has to run before the Initiator tries to connect to it, otherwise the connnection cannot succeed.
+    
+===Close example
+
+---Close-test-profile description
+
+%close-test-profile.r implements a simple BEER profile which is supposed to test BEER channel closing after a simple exchange where the peers are changing their roles from client to server and back. It works as follows:
+
+* Alice taking a client role sends an "ask-me" MSG to Bob using a close-test-profile channel
+
+* Bob working as a server sends an "ask-ok" RPY
+
+* Bob takes a client role and sends an "asking" MSG
+
+* Alice taking a server role sends a "close-me" RPY
+
+* Bob closes the channel
+
+---Close-test-initiator description
+
+The main goal of this test was to be able to test a situation where the Initiator opens a channel, while the Listener closes it.
+
+Therefore the first step after the session is established is to open a channel using the Close-test-profile.
+
+Next, the Initiator plays role of Alice as described above, while the Listener plays role of Bob.
+
+===Filetransfer speed measurement example
+
+---Echo profile
+
+The Echo profile is a precursor and a "testbed" of the Filetransfer profile (as well as some other profiles), therefore you may find useful to have a look at the commented-out portions of code that are showing some possibilities how a profile can be programmed and what variants were tested.
+
+Currently the Echo profile tries to transport the contents of a TESTFILES directory. You need to have a few megabytes of data in such a directory, otherwise the profile will not be able to measure the filetransfer speed.
+
+---initiator-example.r
+
+The file uses the Echo profile to transfer data both using unencrypted as well as encrypted transmission, both transmissions are done in parallel, therefore the transmission speed is affected by this.
+
+After the transfer finishes, the session is closed an open again.
+
+---initiator-serial.r
+
+This script tries to transfer first the unencrypted data and send the encrypted data afterwards to suppress the influence of the first transfer on the speed of the second one.
+
+Both initiator scripts connect to the same listener-example.r
+
+The End

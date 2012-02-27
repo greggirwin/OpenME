@@ -1,0 +1,433 @@
+File Transfer profile
+
+	Author: Richard Smolak<cyphre@whywire.com>
+	Date: 4-Jul-2005
+	Version: 0.0.7
+
+===Purpose
+
+File Transfer profile (FT profile) has been written for BEER framework as a high-level layer for handling multiple asynchronous file data transfers between BEER listener and BEER initiator and vice versa.
+
+===BEER paths
+
+Since the the FT profile is using BEER framework we need to set-up all used paths before creation of Listener or Initiator. To make it easier this document is using simple Rebol script (paths.r) for path definitions which is called at the beggining of Listener and Initiator scripts. Here is the content of paths.r file:
+
+	Rebol [
+		title: "default paths definitions"
+	]
+	
+	root-path: system/script/path
+	libs-path: root-path/libs
+	beer-path: root-path/BEER
+
+\note paths.r location
+
+The paths.r file MUST be placed in the root of the whole directory structure (ie. one level up of the BEER folder). So your dir structure should look like this:
+
+	BEER/
+	libs/
+	example-project/
+	paths.r
+	
+Where the example-project/ folder will contain all our example code mentioned below in this document.
+
+/note
+
+===Setting up the Listener
+
+---Listener initialization
+
+First step is to load all neccesary scripts which will be used by Listener:
+
+	;path file definitions
+	do %../paths.r
+
+	;supporting libs files	
+	do libs-path/aa.r
+	do libs-path/catch.r
+	do libs-path/atcp-protocol.r
+	
+	; user database
+	users: load %users.r
+	groups: load %groups.r
+
+	; BEER files	
+	do beer-path/channel.r
+	do beer-path/frameparser.r
+	do beer-path/frameread.r
+	do beer-path/framesend.r
+	do beer-path/session-handler.r
+	do beer-path/authenticate.r
+	do beer-path/profiles.r
+	do beer-path/listener.r
+		
+	; encoding string	
+	do %encoding-salt.r
+	
+	;FT profile module
+	do beer-path/profiles/ft-profile.r
+
+---Path for received files(file cache directory)
+
+Next you have to specify a place on disk where will be stored all received files.
+
+	;set path for received files
+	ft-profile: profile-registry/filetransfer
+	ft-profile/destination-dir: %cache-listener/
+
+So in this case all recevied data will be written in cache-listener/ folder.
+
+---GET handler
+
+You can specify a GET-handler which contains custom code for handling different actions when Listener is sending file to Initiator(execution of get-file command).
+
+There are three types of ACTION:
+
+	init - this action is called when the filetransfer(Listener->Initiator) is initiated
+	read - is called  on each sent data chunk of file
+	write - all data are sent (file is fully cached on Initiator side). 
+
+NOTE: It is up to the handler code to provide further hadling with received file such as renaming it to the original filename, moving to other directory or deleting the cached file...
+
+There is available DATA block! value during the ACTION call containing some useful data which can be used in the handler code:
+
+DATA is a block! value of:
+	DATA/1 - unique filename when file is cached [string!]
+	DATA/2 - port! of cached file (used for writing during the transfer) [port!]
+	DATA/3 - real filename [string!]
+	DATA/4 - the callback function itself [func!]
+	DATA/5 - total filesize
+	DATA/6 - size of actual received file chunk
+	DATA/7 - transfer destination directory (have to be set on Initiator side)
+
+an example of GET handler:
+
+	ft-profile/get-handler: func [channel action data][
+		switch action [
+			init [
+				print ["start sending file" data/3 "of size" data/5 "to listener."]
+			]
+			read [
+				print ["sending datachunk of file" data/3 "of size" data/6 "bytes"]
+			]
+			write [
+				print ["file" data/3 "has been completely sent to initiator"]
+			]
+		]
+	]
+
+---POST handler
+
+You can simmilarly specify a POST-handler which contains custom code for handling events when Listener is receiving file from Initiator(execution of post-file command).
+
+There are three types of ACTION:
+
+	init - this action is called when the filetransfer(Listener->Initiator) is initiated
+	read - is called  on each sent data chunk of file
+	write - all data are sent (file is fully cached on Initiator side).
+
+NOTE: It is up to the handler code to provide further hadling with received file such as renaming it to the original filename, moving to other directory or deleting the cached file...
+
+There is available DATA block! value during the ACTION call containing some useful data which can be used in the handler code:
+
+DATA is a block! value of:
+	DATA/1 - unique filename when file is cached [string!]
+	DATA/2 - port! of cached file (used for writing during the transfer) [port!]
+	DATA/3 - real filename [string!]
+	DATA/4 - the callback function itself [func!]
+	DATA/5 - total filesize
+	DATA/6 - size of actual received file chunk
+	DATA/7 - transfer destination directory (have to be set on Initiator side)
+
+an example of POST handler:
+
+	ft-profile/post-handler: [
+		switch action [
+			init [
+				print ["started receiving file" data/3 "of size" data/5 "from initiator"]
+			]
+			read [
+				print ["receiving datachunk of file" data/3 "of size" data/6 "bytes"]
+			]
+			write [
+				print ["file" data/3 "has been completely received to folder" data/7 "under unique name" data/1]
+			]
+		]
+	]
+
+---Listener start
+
+Last neccesary step is run the Listener on a TCP port. Here is example which starts listener on TCP port 8000:
+
+	open-listener 8000
+	wait []
+
+If you are running Listener with GUI enabled the code sequence should look like this:
+
+	open-listener 8000
+	view layout [
+		;your GUI code is here
+		...
+		...
+	]
+
+===Setting-up the Initiator
+
+---Initiator initialization
+
+First step is to load all neccesary scripts which will be used by Initiator:
+
+	;path file definitions
+	do %../paths.r
+
+	;supporting libs files	
+	do libs-path/aa.r
+	do libs-path/catch.r
+	do libs-path/atcp-protocol.r
+	
+	; user database
+	users: load %users.r
+	groups: load %groups.r
+
+	; BEER files	
+	do beer-path/channel.r
+	do beer-path/frameparser.r
+	do beer-path/frameread.r
+	do beer-path/framesend.r
+	do beer-path/session-handler.r
+	do beer-path/authenticate.r
+	do beer-path/profiles.r
+	do beer-path/initiator.r
+		
+	; encoding string	
+	do %encoding-salt.r
+	
+	;FT profile module
+	do beer-path/profiles/ft-profile.r
+
+---Path for received files(file cache directory)
+
+Next you have to specify a place on disk where will be stored all received files.
+
+	;set path for received files
+	ft-profile: profile-registry/filetransfer
+	ft-profile/destination-dir: %cache-initiator/
+
+So in this case all recevied data will be written in cache-initiator/ folder.
+
+---Establishing of a FT session(open-session)
+
+In case of the Initiator role you need to establish a session with any running Listener(with enabled FT profile). For that you need to know an IP addres and port on which the Listener is running.
+
+To open a session use function OPEN-SESSION with following syntax:
+
+ OPEN-SESSION url [url!] callback [function!]
+ 
+Here is an example of establishing a session:
+
+	open-session atcp://127.0.0.1:8000 func [port] [
+		either port? port [
+			;define a global reference to the connection
+			peer: port
+			print ["Connected to listener:" peer/sub-port/remote-ip now]
+			;aproach login sequence call
+			do-login
+		][
+			;an error occured, print the error message
+			print port
+		]
+	]
+	
+	do-login: does [
+		;use your own username and password here
+		login aa/get peer/user-data/channels 0 "root" "root-pass" func [result] [
+			either result [
+				print "logged in as Root"
+				;continue with opening a GET filetransfer channel
+				open-get
+			][
+				print "login unsuccessful"
+			]
+		]
+	]
+
+---Opening FT channel(s)
+
+After succesful login to the Listener you can finally open one or more filetransfer channels. You can open two types of filetransfer channel:
+
+*GET channel - used for receiving files from Listener
+
+*POST channel - used sending files to the Listener
+
+Both types uses the same initialization sequence so just keep in mid you need to have separate channels for each way of data transfer.
+
+An example of opening one GET and one POST channels:
+
+	open-get: does [
+		open-channel peer 'filetransfer 1.0.0 func [channel] [
+			either channel [
+				ft-get: channel
+				print "Channel GET open"
+				;continue wit opening a POST channel
+				open-post
+			][
+				print "didn't succeed to open unsecure echo channel"
+			]
+		]
+	]
+
+	open-post: does [
+		open-channel peer 'filetransfer 1.0.0 func [channel] [
+			either channel [
+				ft-post: channel
+				print "Channel POST open"
+				;continue with main code execution
+				do-main
+			][
+				print "didn't succeed to open unsecure echo channel"
+			]
+		]
+	]
+
+
+	do-main: does [
+		;here is rest of your code applicaton
+	]
+
+	;main event loop
+	wait []
+
+\note Async behaviour
+
+As you could noticed from the code above the flow of commands have to be written using callbacks due to asynchronous behaviour of the BEER framework.
+
+/note
+
+---GET-FILE calbback handler
+
+You can specify a GET-FILE callback handler, which will be used as an argument in GET-FILE function(will be explained later), which contains custom code for handling different actions when Initiator is receiving a file from Listener.
+
+There are three types of ACTION:
+
+	init - this action is called when the filetransfer(Listener->Initiator) is initiated
+	read - is called  on each sent data chunk of file
+	write - all data are sent (file is fully cached on Initiator side). 
+
+NOTE: It is up to the handler code to provide further hadling with received file such as renaming it to the original filename, moving to other directory or deleting the cached file...
+
+There is available DATA block! value during the ACTION call containing some useful data which can be used in the handler code:
+
+DATA is a block! value of:
+	DATA/1 - unique filename when file is cached [string!]
+	DATA/2 - port! of cached file (used for writing during the transfer) [port!]
+	DATA/3 - real filename [string!]
+	DATA/4 - the callback function itself [func!]
+	DATA/5 - total filesize
+	DATA/6 - size of actual received file chunk
+	DATA/7 - transfer destination directory (have to be set on Initiator side)
+
+an example of GET-FILE callback handler:
+
+	get-callback-handler: [
+		switch action [
+			init [
+				print ["started receiving file" data/3 "of size" data/5 "from Listener"]
+			]
+			read [
+				print ["receiving datachunk of file" data/3 "of size" data/6 "bytes"]
+			]
+			write [
+				print ["file" data/3 "has been completely received to folder" data/7 "under unique name" data/1]
+			]
+		]
+	]
+
+---POST-FILE callback handler
+
+You can specify a POST-FILE callback handler, which will be used as an argument in PST-FILE function(will be explained later), which contains custom code for handling different actions when Initiator is sendinging a file to Listener.
+
+There are three types of ACTION:
+
+	init - this action is called when the filetransfer(Listener->Initiator) is initiated
+	read - is called  on each sent data chunk of file
+	write - all data are sent (file is fully cached on Initiator side). 
+
+NOTE: It is up to the handler code to provide further hadling with received file such as renaming it to the original filename, moving to other directory or deleting the cached file...
+
+There is available DATA block! value during the ACTION call containing some useful data which can be used in the handler code:
+
+DATA is a block! value of:
+	DATA/1 - unique filename when file is cached [string!]
+	DATA/2 - port! of cached file (used for writing during the transfer) [port!]
+	DATA/3 - real filename [string!]
+	DATA/4 - the callback function itself [func!]
+	DATA/5 - total filesize
+	DATA/6 - size of actual received file chunk
+	DATA/7 - transfer destination directory (have to be set on Initiator side)
+
+an example of POST-FILE callback handler:
+
+	post-callback-handler: [
+		switch action [
+			init [
+				print ["start sending file" data/3 "of size" data/5 "to Listener."]
+			]
+			read [
+				print ["sending datachunk of file" data/3 "of size" data/6 "bytes"]
+			]
+			write [
+				print ["file" data/3 "has been completely sent to listener"]
+			]
+		]
+	]
+===Control functions
+
+Now, when you have Initiator and Listener connected you have to use two following control functions to execute the filetransfer on Initiator side.
+
+---GET-FILE function
+
+The GET-FILE function issues GET command on appropriate filetransfer channel ie. file is transfered from Listener to Initiator. The syntax of this function is:
+
+	GET-FILE channel [object!] blk [block!] callback [block! none!] /dst-dir dst [file!]
+	
+where:
+
+channel - reference to the used FT channel
+
+blk - a block! containing one or more files(if the file is in different folder than 'current dir' you have to specify absolute path with each of the file)
+
+callback - a block! containing GET-callback-handler code(see section above) or none if no callback is required
+
+/dst-file dst - use this refiniment in case you want to store the received files to other than default set folder
+
+an example of GET-FILE function usage:
+
+	view/new layout [
+		button "get file(s)" [
+			get-file ft-get request-file get-callback-handler
+		]
+	]
+	
+---POST-FILE function
+
+The POST-FILE function issues POST command on appropriate filetransfer channel ie. file is transfered from Initiator to Listener. The syntax of this function is:
+
+	POST-FILE channel [object!] blk [block!] callback [block! none!]
+	
+where:
+
+channel - reference to the used FT channel
+
+blk - a block! containing one or more files(if the file is in different folder than 'current dir' you have to specify absolute path with each of the file)
+
+callback - a block! containing POST-callback-handler code(see section above) or none if no callback is required
+
+an example of POST-FILE function usage:
+
+	view/new layout [
+		button "post file(s)" [
+			post-file ft-post request-file post-callback-handler
+		]
+	]
+
+

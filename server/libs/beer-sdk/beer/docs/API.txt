@@ -1,0 +1,371 @@
+Principles and API of BEER foundation.
+
+    Date: 20-Feb-2006/17:29:20+1:00
+
+===Original Specification
+
+The Blocks Extensible Exchange Protocol Core, rfc3080, rfc3081.
+
+===Limited range arithmetic
+
+Some numbers (e.g. msgno, seqno, chno) are "limited range" numbers, such that 0 <= number < MAXSEQNO (MAXSEQNO is an even integer).
+
+Function Part-add is a "limited range addition", which adds two limited range numbers yielding a limited range result.
+
+Function Part-sub is a "limited range subtraction" obtaining two limited range numbers and yielding their difference such that: (MAXSEQNO / -2) < difference <= (MAXSEQNO / 2).
+
+===Frame rules
+
+The foundation implements the BEEP RFC rules in a modified way. Here are some cases, where a difference can be found:
+
+a) poorly formed frame rule: "if the header starts with MSG and the message number refers to a  MSG message that has been completely received but for which a reply has not been completely sent" - I made this stricter: "if the header starts with MSG and the message number differs from the *expected incoming MSG number*" - this is faster and simpler to check
+
+Example: when I completely receive a MSG number 0, I cannot receive message number 0 again until I send a complete reply number 0. Instead of checking this I check, whether the next incoming MSG message has got number 1, the subsequent one number 2, etc., being sure, that the range of numbers (0 .. MAXSEQNO) is so large, that I never receive a message I didn't answer yet (otherwise I would have MAXSEQNO unanswered incoming messages, which would be too many messages to remember anyway).
+
+When creating a new message, the value of channel/out-msgno is the number the MSG message is supposed to have.
+
+b) poorly formed frame rule: "if the header doesn't start with MSG and refers to a message number that has never been sent" - Stricter rule: "if the header doesn't start with MSG and doesn't refer to the first unanswered MSG sent".
+This rule is in agreement with "... the BEEP peer must generate replies in the same order as the corresponding MSG messages are received on a given channel."
+
+===Flow control
+
+---Flow control levels
+
+The flow control is two-stage. There is a session (TCP input buffer) level flow control and a channel level flow control.
+
+---Session level flow control
+
+A session is supposed to have one TCP input buffer and this level is designed to make sure the stream of incoming bytes will be kept "in the limits" of the TCP input buffer.
+
+Every byte of every frame is a subject of the session level flow control. To make sure every single byte is taken into account, seqno's are adjusted not only by payload, but by frame headers and trailers as well as by SEQ frames.
+
+---SEQ frames
+
+SEQ frames "steer" (and are subjects of) the session level flow, they have the highest priority.
+
+A SEQ frame contains only one value - the new "right edge" seqno of the byte sequence window.
+
+A frame (SEQ frames included) cannot be sent, if such a transmission would "cross" the right edge of the peer's input window, because that would most probably cause the peer's TCP input buffer overfill.
+
+Incoming SEQ frames are checked whether they "shrink the window", i.e. "shift the right window edge to the left". SEQ frame "shrinking the window" is considered poorly formed (as the rfc3081 suggests).
+
+---Seqno computation
+
+This implementation assigns one TCP buffer to every session, i.e. there is only one session-based seqno.
+
+Seqno computation reflects the fact that the frame header and trailer bytes as well as SEQ frames fill some space in the TCP input buffer.
+
+Every SEQ message increases seqno by MAXSEQFRAME.
+
+Every other message increases seqno by MAXHT + length? payload.
+
+---Parsing limits
+
+The parse-frames function makes sure every message "fits" into the above limits (MAXSEQFRAME, MAXHT) to not get "out of sync". Moreover, the payload size is limited by MAXSIZE to make sure the frame size doesn't exceed MAXFRAME as suggested by rfc3081.
+
+===Client and Server
+
+In BEER every party can become a client or a server at any time. The peer starting an exchange by sending a MSG message is the client and the peer responding by RPY, ERR, ANS or NUL is the server in the exchange.
+
+Because of the limitations explained below it is convenient to send large files as a server. Therefore it is possible that a client asks the server to ask for a big file to be sent to him, i.e. to take the client role.
+
+The listener and initiator roles cannot be swapped, though, because that would cause channel number conflicts (listener uses 
+
+===Frame priorities
+
+1) SEQ frames - the highest priority
+2) reply frames (RPY, ERR, ANS and NUL) - "normal" priority
+3) MSG frames - subjects of the channel level flow control
+
+===Reply handling
+
+Reply frames are processed immediately (by Read-rpy handler) when received. No defragmentation or queueing is taking place. Reply size isn't limited.
+
+Replies "steer" the channel level flow similarly as SEQ's steer the session level flow - see below.
+
+===MSG handling
+
+MSG handling reflects the fact, that MSG's are essentially "unsolicited". MSG messages are completely defragmented before further processing, the size of a MSG is subject to MAXMSGLEN limit, see below.
+
+MSG's are handled by Read-msg handler.
+
+The channel level flow control "queues" incoming MSG's at a channel level, doing defragmentation.
+
+To prevent an "overfill", there is a MAXMSGLEN limit, which regulates the amount of MSG bytes stored at once at the channel level. It is an analog of the MAXBUFLEN at the session level. The peer can send a new MSG only if he makes sure it doesn't exceed the MAXMSGLEN limit. After receiving a reply the peer knows that the space taken by the answered MSG has been freed and he can send more MSGs.
+
+MSG processing can take place only if the channel "can transmit" (because MSG processing involves reply sending) and when there is an incoming MSG that is completely defragmented.
+
+A "fair reply policy" interleaving MSG processing and MSG transmission is applied.
+
+A programmer can either use Send-frame to send a "short reply" or use the Register-sending function to register his own write handler for sending a lengthy RPY or an ANS. (See the Echo profile for an example).
+
+===Register-sending function
+
+---Register-sending and Read-msg
+
+The Register-sending function is designed to be called mainly from the Read-msg handler to register a Write handler to send a reply message. (It is also used "internally", e.g. by the Send-frame function).
+
+---Register-sending and Read-rpy
+
+Warning: The Register-sending function shouldn't be called from the Read-rpy handler without additional security measures!
+
+---Register-sending and Write
+
+On the other hand, it is safe to call the Register-sending function from a Write handler. The effect is, that the current Write handler will be replaced by the given one for the next transmission. If it is desired, it can be called immediately as follows:
+
+	register-sending channel :new-write-handler ; replace the current handler
+	return channel/write channel size ; call the new handler immediately
+
+---Unregistration
+
+A Write handler is unregistered automatically by the Round-robin function when the Round-robin function finds out it has done the message sending, i.e. when:
+
+#the handler returns a NUL frame finishing the ANS transmission, or
+
+#the handler returns a non-ANS frame with frame/more = '.
+
+===Sending MSGs
+
+MSGs can be sent by the Send-frame function, which supports callback blocks. Payload of a MSG cannot exceed MAXMSGLEN - MAXHT limit.
+
+The Send-frame function can be used to send replies too, if desired. (Not optimized for file transfer!)
+
+===Synchronization (callback blocks)
+
+Due to the fact that the transmission is being done by the Round-robin function, there is no synchronization between channels. There is no guarantee, that frames in different channels will be transmitted in a specific order.
+
+To facilitate the synchronization (outgoing frame ordering between channels), I added a "callback block synchronization mechanism" to the Round-robin function. 
+
+A write handler of a channel is allowed to return:
+
+#a frame to transmit
+
+#a number signaling it doesn't transmit, (and it is waiting for a payload window having at least the indicated size)
+
+#a block containing two elements: the first element is a frame to transmit and the second element is a "callback block" - a block that is guaranteed to be done *after* the frame was sent
+
+===Profile registry
+
+Profile-registry is a variable referring to an object containing all the profiles. The profile registry API consists of the following functions:
+
+Register - a function registering a profile, takes just one argument, the profile
+
+Registered? - a function that can find out if a profile is registered
+
+===Profiles
+
+A profile is an object. One profile can be used for many channels, it shouldn't contain any "private" data related to a specific channel. This is a profile template:
+
+	profile: make object! [
+		profile: 'sample-profile ; profile name
+		version: 1.0.0 ; version of the profile
+		init: func [
+			{Initialize channel specific data and dynamic handlers}
+			channel [object!] ; the channel to be initialized
+		] [
+			; create the private profile data
+			channel/prof-data: make object! [
+				; ...
+			]
+			; set the read-msg handler
+			channel/read-msg: func [
+					{handle incoming replies}
+					channel
+					msg
+			] [
+				comment {
+					This function obtains an already defragmented incoming MSG
+					frame and has to process it.
+				}
+			]
+			; set the read-rpy handler
+			channel/read-rpy: func [
+				{handle incoming replies}
+				channel
+				rpy
+			] [
+				comment {
+					This function obtains an incoming reply fragment and has to
+					process it.
+				}
+			]
+			; set the close handler
+			channel/close: func [
+				{to let the profile know, that the channel is being closed}
+				channel
+			] [
+				comment {
+	 				The close handler informs the channel-management profile
+					that the channel is being closed.
+					it is allowed to return:
+					a) an err frame (msgno not needed) signaling a refusal to
+						close the channel
+					b) any other value signals that the profile will stop
+						sending any MSG messages, but will continue handling
+						received messages.
+				}
+			]
+		]
+		; ...
+	]
+
+===Authentication
+
+The Channel-management profile is responsible for authentication. The rules:
+
+#Initially (when the session starts) the peer is "anonymous".
+
+#The client (either the listener or the initiator) can authenticate once per session.
+
+---Authentication Procedure
+
+#The client (it doesn't matter whether the listener or the initiator) asks for authentication sending a "Login" MSG.
+
+#The server responds by sending a RPY containing a password challenge.
+
+#The client creates a challenge answer and sends it as an "Answer" MSG.
+
+#The server verifies the password and changes the username for the whole session.
+
+#BEER authentication discerns two kind of users: users, that can be authenticated normally ("login" users) and users, that cannot be authenticated normally - like e.g. user Anonymous or Listener. Neither of the two is supposed to log in using the authentication procedure. Every initiator should have a Listener user to specify the rights for the connected listener.
+
+#BEER encodes user passwords using checksum/secure which ensures, that user passwords aren't "openly" stored.
+
+#The authentication procedure doesn't reveal user names.
+
+---Encrypted transmission in Channel 0
+
+Immediately after a successful authentication the server who sent the OK RPY starts the encrypted transmission on Channel 0.
+
+===Parallel versus serial execution
+
+(Don't be afraid, this isn't about mass murders!)
+
+---Parallel execution
+
+Async nature of the framework makes it easy to execute things in parallel. The events are handled by supplied callbacks.
+
+An example of a callback is the ON-OPEN callback that is being called when a session is opened.
+
+---Callbacks and closures
+
+REBOL functions "erase" informations that may still be in use. Example:
+
+    f-returning-x: func [x] [
+        func [] [x]
+    ]
+    f-returning-ok: f-returning-x "OK"
+    f-returning-ok ; == "OK"
+    f-returning-bug: f-returning-x "BUG!"
+    ; so far so good, but now:
+    f-returning-ok ; == "BUG!"
+
+How to solve this:
+
+    f-returning-x: closure [x] [
+        func [] [x]
+    ]
+    f-returning-ok: f-returning-x "OK"
+    f-returning-ok ; == "OK"
+    f-returning-bug: f-returning-x "BUG!"
+    ; so far so good, but now:
+    f-returning-ok ; == "OK"
+
+---Serial execution
+
+Because of the async nature it is actually harder to execute expressions serially, i.e. one after another.
+
+===Possible improvements
+
+*SEQNO, CHNO, etc. "standardization"
+
+*Global space cleanup
+
+*Interface improvement
+
+*Flow control standardization ("port none not open" error) etc.
+
+===Special functions
+
+DEBUG is a function printing debugging output. You can set it to NONE at any time to suppress printing.
+
+LOG-ERROR is a function printing error output to the console. You can redefine it too.
+
+===How to define your own profile
+
+When defining your own profile, pick an appropriate name and use the template described above.
+
+Rules to keep in mind when writing a profile:
+
+#Do not use any private channel data in the profile, especially if the profile is supposed to handle more than one channel. Instead you should define the channel/prof-data object (in the profile Init function) and keep private channel data for the profile in it.
+
+#All your functions creating asynchronous code (like functions creating callback functions, callback blocks, or returning local variables etc.) should be defined using Closure instead of Func.
+
+#Do not use MSGs to send large chunks of data (the size of a MSG is limited), prefer RPY or ANS for that purpose. See the MSG handling section above.
+
+#Examples contain some commented out parts that should be seen as possible alternatives to the actual running code.
+
+#The profile Init function should define and initialize the channel profile data as well as set up initial dynamic handlers: Read-msg, Read-rpy, Close. Read-msg handler has to handle incoming MSGs, while Read-rpy must handle replies of any of the following types: ERR, RPY, ANS, NUL. The Close handler handles only the channel close event. See the template above for the description of its possible return values.
+
+#When writing your profiles keep in mind, that in BEER every exchange has to be finished, i.e. a peer should send a reply to every MSG. (By "a reply" I mean either a RPY, ERR, or any number - including zero - of ANS messages followed by one NUL message.
+
+See examples/echo-profile.r for a more complete commented example of a profile creation.
+
+===BEER framework files
+
+    %BEER-SDK directory contains:
+
+    %AUTHORS - the list of BEER authors
+    %COPYING - framework license - GNU GPL 2
+    %LICENSE - a license note
+    %paths.r - a script defining paths to BEER files and the INCLUDE function
+    
+    %libs - directory of helper files, containing:
+    
+    %aa.r - associative array implementation
+    %catch.r - Catch/Throw using local Throw
+    %default.r - exception handling function
+    %iatcp-protocol.r - an improved async TCP protocol implementation
+    %include.r - a simple module managing function
+    %threads.r - simple threading implementation
+    %timer.r - base of %threads.r, see %timer.hml
+    %timer.html - a description of %timer.r and %threads.r
+    %timer.txt - makedoc source of %timer.html
+    
+    %BEER - a directory containing:
+    
+    %authenticate.r - simple authentication functions
+    %frameparser.r - defines a function parsing BEER frames
+    %frameread.r - function taking care of read and parsed BEER frames
+    %framesend.r - function sending BEER frames in a round-robin style
+    %channel.r - basic definitions and constants of the framework
+    %initiator.r - function starting a BEER initiator
+    %listener.r - function starting a BEER listener
+    %profiles.r - profile registry definition and channel-management profile
+    %session-handler.r - the BEER session handler definition
+    
+    %docs - a directory containing:
+    
+    %API.txt - the makedoc definition of this file
+    %API.html - the html version of this file
+    %examples.txt - the makedoc description of BEER examples
+    %examples.html - the html version of the description of BEER examples
+    %ft-profile.txt - the makedoc definition of the FT profile documentation
+    %ft-profile.html - the HTML version of the FT profile documentation
+    %lns-profile.txt - the makedoc definition of the LNS profile documentation
+    %lns-profile.html - the HTML version of the LNS profile documentation
+    
+    %examples - a directory containing the BEER examples
+    
+    %styles - a directory needed for the GUI examples
+    
+    %profiles - a directory containing the profile definitions:
+    
+    %ft-profile - the Filetransfer profile definition
+    %rpc-profile - the RPC profile definition
+
+---Channel.r
+
+As stated above, this file contains some basic constants. E.g. the MAXMSGLEN limit can be easily enlarged if useful.
+
+The End

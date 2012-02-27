@@ -1,0 +1,90 @@
+Timer.r and Threads.r
+
+    Date: 14-Feb-2006/14:21:48+1:00
+    Author: Ladislav Mecir
+
+===Purpose
+
+The files are written to support basic threading in Rebol.
+
+===Timer.r
+
+This file defines the base functions for %threads.r:
+
+    add-alarm
+    do-events
+
+---Implementation
+
+Timer.r is implemented using REBOL lists, which makes both the above mentioned functions faster than a similar implementation using REBOL blocks would be. Moreover, the implementation maintains the alarms sorted, which eliminates the need to use SORT and therefore adds speed too.
+    
+---Add-alarm
+
+Add-alarm is a function taking two arguments: Time and Alarm.
+
+The Time argument specifies when the Alarm should happen. If it is a Time! or a Number!, it is supposed to specify the length of the time interval to wait (in seconds if it is a Number!).
+
+The Alarm argument can be either a function, or a word. If it is a word, the caller can easily kill the alarm by simply setting the supplied word to None.
+
+Add-alarm doesn't create repetitive alarms, although it is easy to create them using Add-alarm e.g. as follows:
+
+	handle-timer: does [
+		print ["alarm" now/precise]
+		add-alarm 0:0:5 'handle-timer
+	]
+
+To kill the alarm, it is sufficient to set the 'handle-timer variable to None. Here is a more complicated repetitive alarm going off after a specified time:
+
+    stop-time: load ask "stop time:"
+    alarm-time: load ask "alarm time:"
+    handle-timer: does [
+    	print ["alarm" now/precise]
+    	either stop-time >= difference now/precise start-time [
+    		add-alarm alarm-time 'handle-timer
+    	] [print "done"]
+    ]
+    start-time: now/precise
+    handle-timer
+    do-events
+
+An example result of such code:
+
+	stop time:0:0:40
+	alarm time:0:0:5
+	alarm 14-Feb-2006/14:54:18.569+1:00
+	alarm 14-Feb-2006/14:54:23.569+1:00
+	alarm 14-Feb-2006/14:54:28.569+1:00
+	alarm 14-Feb-2006/14:54:33.569+1:00
+	alarm 14-Feb-2006/14:54:38.569+1:00
+	alarm 14-Feb-2006/14:54:43.569+1:00
+	alarm 14-Feb-2006/14:54:48.569+1:00
+	alarm 14-Feb-2006/14:54:53.569+1:00
+	alarm 14-Feb-2006/14:54:58.569+1:00
+	alarm 14-Feb-2006/14:55:03.569+1:00
+	done
+
+===Threads.r
+
+This file uses %timer.r to define more complicated functions than %timer.r:
+
+    Add-thread - a more complicated counterpart of Add-alarm
+    Check-next-trigger - for backward compatibility with older implementation
+    Kill-thread - Add-thread opposite
+    Thread-exists? - to check for thread existence
+    Cid? - find out the Callback-id of a thread knowing its Thread-id
+    Thread-id? - find out the Thread-id of a thread knowing its Callback-id
+    Length-threads? - returns how many threads exist
+    Thread-type? - given the Thread-id returns the type of the thread
+
+---Implementation
+
+As opposed to %timer.r and due to the BEER RPC profile compatibility requirements %threads.r use a string as both a thread identifier and a callback identifier. 
+
+This leads to a relative slow down compared to the %timer.r implementation, because the comparison of strings is slower than comparison of words in REBOL. 
+Moreover, because the identifiers are strings, the implementation needs to check for uniqueness, which is unnecessary for REBOL words. Therefore the Add-thread implementation has to use the Find function, which is another slow-down compared to %timer.r The similar slow down is observable for Kill-thread, which doesn't even exist for %timer.r, because it is rather trivial in that case.
+
+---Add-thread
+
+As opposed to Add-alarm the Add-thread allows the usage of /repeat refinement allowing to define repetitive threads.
+
+The End

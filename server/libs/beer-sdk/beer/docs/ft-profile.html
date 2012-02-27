@@ -1,0 +1,425 @@
+<html><title>File Transfer profile
+</title><body>
+<h1><font face="arial,helvetica" size="5">File Transfer profile
+</font></h1><p><b><pre>    Author: Richard Smolak&lt;cyphre@whywire.com&gt;
+    Date: 4-Jul-2005
+    Version: 0.0.7
+</pre></b>
+<HR><P><h2><font face="arial,helvetica" size="4">Contents:</font></h2><p><blockquote><font face="arial,helvetica" size="2"><B><A HREF="#section-1">1. Purpose
+</A><BR><A HREF="#section-2">2. BEER paths
+</A><BR><A HREF="#section-3">3. Setting up the Listener
+</A><BR><A HREF="#section-4">4. Setting-up the Initiator
+</A><BR><A HREF="#section-5">5. Control functions
+</A><BR></B></font></blockquote><HR><A NAME="section-1"></A><p><h2><font face="arial,helvetica" size="4">1. Purpose
+</font></h2><p><blockquote><font face="arial,helvetica" size="2">File Transfer profile (FT profile) has been written for BEER framework as a high-level layer for handling multiple asynchronous file data transfers between BEER listener and BEER initiator and vice versa.
+<p>
+</font></blockquote><HR><A NAME="section-2"></A><p><h2><font face="arial,helvetica" size="4">2. BEER paths
+</font></h2><p><blockquote><font face="arial,helvetica" size="2">Since the the FT profile is using BEER framework we need to set-up all used paths before creation of Listener or Initiator. To make it easier this document is using simple Rebol script (paths.r) for path definitions which is called at the beggining of Listener and Initiator scripts. Here is the content of paths.r file:
+<p>
+</font><b><pre>    Rebol [
+        title: "default paths definitions"
+    ]
+    
+    root-path: system/script/path
+    libs-path: root-path/libs
+    beer-path: root-path/BEER
+</pre></b>
+<TABLE BORDER="1" CELLPADDING="3" CELLSPACING="0" WIDTH="80%"><TR><TD WIDTH="100%" BGCOLOR="black"><B><FONT COLOR="white" FACE="Arial, Helvetica"> paths.r location
+</FONT></B></TD></TR><TR><TD WIDTH="100%"><font face="arial,helvetica" size="2">The paths.r file MUST be placed in the root of the whole directory structure (ie. one level up of the BEER folder). So your dir structure should look like this:
+<p>
+</font><b><pre>    BEER/
+    libs/
+    example-project/
+    paths.r
+    
+</pre></b>
+<font face="arial,helvetica" size="2">Where the example-project/ folder will contain all our example code mentioned below in this document.
+<p>
+</font></TD></TR></TABLE></blockquote><HR><A NAME="section-3"></A><p><h2><font face="arial,helvetica" size="4">3. Setting up the Listener
+</font></h2><p><blockquote><p><h3><font face="arial,helvetica" size="3">3.1. Listener initialization
+</font></h3><p><font face="arial,helvetica" size="2">First step is to load all neccesary scripts which will be used by Listener:
+<p>
+</font><b><pre>    ;path file definitions
+    do %../paths.r
+
+    ;supporting libs files  
+    do libs-path/aa.r
+    do libs-path/catch.r
+    do libs-path/atcp-protocol.r
+    
+    ; user database
+    users: load %users.r
+    groups: load %groups.r
+
+    ; BEER files    
+    do beer-path/channel.r
+    do beer-path/frameparser.r
+    do beer-path/frameread.r
+    do beer-path/framesend.r
+    do beer-path/session-handler.r
+    do beer-path/authenticate.r
+    do beer-path/profiles.r
+    do beer-path/listener.r
+        
+    ; encoding string   
+    do %encoding-salt.r
+    
+    ;FT profile module
+    do beer-path/profiles/ft-profile.r
+</pre></b>
+<p><h3><font face="arial,helvetica" size="3">3.2. Path for received files(file cache directory)
+</font></h3><p><font face="arial,helvetica" size="2">Next you have to specify a place on disk where will be stored all received files.
+<p>
+</font><b><pre>    ;set path for received files
+    ft-profile: profile-registry/filetransfer
+    ft-profile/destination-dir: %cache-listener/
+</pre></b>
+<font face="arial,helvetica" size="2">So in this case all recevied data will be written in cache-listener/ folder.
+<p>
+</font><p><h3><font face="arial,helvetica" size="3">3.3. GET handler
+</font></h3><p><font face="arial,helvetica" size="2">You can specify a GET-handler which contains custom code for handling different actions when Listener is sending file to Initiator(execution of get-file command).
+<p>
+</font><font face="arial,helvetica" size="2">There are three types of ACTION:
+<p>
+</font><b><pre>    init - this action is called when the filetransfer(Listener-&gt;Initiator) is initiated
+    read - is called  on each sent data chunk of file
+    write - all data are sent (file is fully cached on Initiator side). 
+</pre></b>
+<font face="arial,helvetica" size="2">NOTE: It is up to the handler code to provide further hadling with received file such as renaming it to the original filename, moving to other directory or deleting the cached file...
+<p>
+</font><font face="arial,helvetica" size="2">There is available DATA block! value during the ACTION call containing some useful data which can be used in the handler code:
+<p>
+</font><font face="arial,helvetica" size="2">DATA is a block! value of:
+<p>
+</font><b><pre>    DATA/1 - unique filename when file is cached [string!]
+    DATA/2 - port! of cached file (used for writing during the transfer) [port!]
+    DATA/3 - real filename [string!]
+    DATA/4 - the callback function itself [func!]
+    DATA/5 - total filesize
+    DATA/6 - size of actual received file chunk
+    DATA/7 - transfer destination directory (have to be set on Initiator side)
+</pre></b>
+<font face="arial,helvetica" size="2">an example of GET handler:
+<p>
+</font><b><pre>    ft-profile/get-handler: func [channel action data][
+        switch action [
+            init [
+                print ["start sending file" data/3 "of size" data/5 "to listener."]
+            ]
+            read [
+                print ["sending datachunk of file" data/3 "of size" data/6 "bytes"]
+            ]
+            write [
+                print ["file" data/3 "has been completely sent to initiator"]
+            ]
+        ]
+    ]
+</pre></b>
+<p><h3><font face="arial,helvetica" size="3">3.4. POST handler
+</font></h3><p><font face="arial,helvetica" size="2">You can simmilarly specify a POST-handler which contains custom code for handling events when Listener is receiving file from Initiator(execution of post-file command).
+<p>
+</font><font face="arial,helvetica" size="2">There are three types of ACTION:
+<p>
+</font><b><pre>    init - this action is called when the filetransfer(Listener-&gt;Initiator) is initiated
+    read - is called  on each sent data chunk of file
+    write - all data are sent (file is fully cached on Initiator side).
+</pre></b>
+<font face="arial,helvetica" size="2">NOTE: It is up to the handler code to provide further hadling with received file such as renaming it to the original filename, moving to other directory or deleting the cached file...
+<p>
+</font><font face="arial,helvetica" size="2">There is available DATA block! value during the ACTION call containing some useful data which can be used in the handler code:
+<p>
+</font><font face="arial,helvetica" size="2">DATA is a block! value of:
+<p>
+</font><b><pre>    DATA/1 - unique filename when file is cached [string!]
+    DATA/2 - port! of cached file (used for writing during the transfer) [port!]
+    DATA/3 - real filename [string!]
+    DATA/4 - the callback function itself [func!]
+    DATA/5 - total filesize
+    DATA/6 - size of actual received file chunk
+    DATA/7 - transfer destination directory (have to be set on Initiator side)
+</pre></b>
+<font face="arial,helvetica" size="2">an example of POST handler:
+<p>
+</font><b><pre>    ft-profile/post-handler: [
+        switch action [
+            init [
+                print ["started receiving file" data/3 "of size" data/5 "from initiator"]
+            ]
+            read [
+                print ["receiving datachunk of file" data/3 "of size" data/6 "bytes"]
+            ]
+            write [
+                print ["file" data/3 "has been completely received to folder" data/7 "under unique name" data/1]
+            ]
+        ]
+    ]
+</pre></b>
+<p><h3><font face="arial,helvetica" size="3">3.5. Listener start
+</font></h3><p><font face="arial,helvetica" size="2">Last neccesary step is run the Listener on a TCP port. Here is example which starts listener on TCP port 8000:
+<p>
+</font><b><pre>    open-listener 8000
+    wait []
+</pre></b>
+<font face="arial,helvetica" size="2">If you are running Listener with GUI enabled the code sequence should look like this:
+<p>
+</font><b><pre>    open-listener 8000
+    view layout [
+        ;your GUI code is here
+        ...
+        ...
+    ]
+</pre></b>
+</blockquote><HR><A NAME="section-4"></A><p><h2><font face="arial,helvetica" size="4">4. Setting-up the Initiator
+</font></h2><p><blockquote><p><h3><font face="arial,helvetica" size="3">4.1. Initiator initialization
+</font></h3><p><font face="arial,helvetica" size="2">First step is to load all neccesary scripts which will be used by Initiator:
+<p>
+</font><b><pre>    ;path file definitions
+    do %../paths.r
+
+    ;supporting libs files  
+    do libs-path/aa.r
+    do libs-path/catch.r
+    do libs-path/atcp-protocol.r
+    
+    ; user database
+    users: load %users.r
+    groups: load %groups.r
+
+    ; BEER files    
+    do beer-path/channel.r
+    do beer-path/frameparser.r
+    do beer-path/frameread.r
+    do beer-path/framesend.r
+    do beer-path/session-handler.r
+    do beer-path/authenticate.r
+    do beer-path/profiles.r
+    do beer-path/initiator.r
+        
+    ; encoding string   
+    do %encoding-salt.r
+    
+    ;FT profile module
+    do beer-path/profiles/ft-profile.r
+</pre></b>
+<p><h3><font face="arial,helvetica" size="3">4.2. Path for received files(file cache directory)
+</font></h3><p><font face="arial,helvetica" size="2">Next you have to specify a place on disk where will be stored all received files.
+<p>
+</font><b><pre>    ;set path for received files
+    ft-profile: profile-registry/filetransfer
+    ft-profile/destination-dir: %cache-initiator/
+</pre></b>
+<font face="arial,helvetica" size="2">So in this case all recevied data will be written in cache-initiator/ folder.
+<p>
+</font><p><h3><font face="arial,helvetica" size="3">4.3. Establishing of a FT session(open-session)
+</font></h3><p><font face="arial,helvetica" size="2">In case of the Initiator role you need to establish a session with any running Listener(with enabled FT profile). For that you need to know an IP addres and port on which the Listener is running.
+<p>
+</font><font face="arial,helvetica" size="2">To open a session use function OPEN-SESSION with following syntax:
+<p>
+</font><b><pre> OPEN-SESSION url [url!] callback [function!]
+ 
+</pre></b>
+<font face="arial,helvetica" size="2">Here is an example of establishing a session:
+<p>
+</font><b><pre>    open-session atcp://127.0.0.1:8000 func [port] [
+        either port? port [
+            ;define a global reference to the connection
+            peer: port
+            print ["Connected to listener:" peer/sub-port/remote-ip now]
+            ;aproach login sequence call
+            do-login
+        ][
+            ;an error occured, print the error message
+            print port
+        ]
+    ]
+    
+    do-login: does [
+        ;use your own username and password here
+        login aa/get peer/user-data/channels 0 "root" "root-pass" func [result] [
+            either result [
+                print "logged in as Root"
+                ;continue with opening a GET filetransfer channel
+                open-get
+            ][
+                print "login unsuccessful"
+            ]
+        ]
+    ]
+</pre></b>
+<p><h3><font face="arial,helvetica" size="3">4.4. Opening FT channel(s)
+</font></h3><p><font face="arial,helvetica" size="2">After succesful login to the Listener you can finally open one or more filetransfer channels. You can open two types of filetransfer channel:
+<p>
+</font><ul><li><font face="arial,helvetica" size="2">GET channel - used for receiving files from Listener
+<p>
+</font><li><font face="arial,helvetica" size="2">POST channel - used sending files to the Listener
+<p>
+</font></ul><font face="arial,helvetica" size="2">Both types uses the same initialization sequence so just keep in mid you need to have separate channels for each way of data transfer.
+<p>
+</font><font face="arial,helvetica" size="2">An example of opening one GET and one POST channels:
+<p>
+</font><b><pre>    open-get: does [
+        open-channel peer 'filetransfer 1.0.0 func [channel] [
+            either channel [
+                ft-get: channel
+                print "Channel GET open"
+                ;continue wit opening a POST channel
+                open-post
+            ][
+                print "didn't succeed to open unsecure echo channel"
+            ]
+        ]
+    ]
+
+    open-post: does [
+        open-channel peer 'filetransfer 1.0.0 func [channel] [
+            either channel [
+                ft-post: channel
+                print "Channel POST open"
+                ;continue with main code execution
+                do-main
+            ][
+                print "didn't succeed to open unsecure echo channel"
+            ]
+        ]
+    ]
+
+
+    do-main: does [
+        ;here is rest of your code applicaton
+    ]
+
+    ;main event loop
+    wait []
+</pre></b>
+<TABLE BORDER="1" CELLPADDING="3" CELLSPACING="0" WIDTH="80%"><TR><TD WIDTH="100%" BGCOLOR="black"><B><FONT COLOR="white" FACE="Arial, Helvetica"> Async behaviour
+</FONT></B></TD></TR><TR><TD WIDTH="100%"><font face="arial,helvetica" size="2">As you could noticed from the code above the flow of commands have to be written using callbacks due to asynchronous behaviour of the BEER framework.
+<p>
+</font></TD></TR></TABLE><p><h3><font face="arial,helvetica" size="3">4.5. GET-FILE calbback handler
+</font></h3><p><font face="arial,helvetica" size="2">You can specify a GET-FILE callback handler, which will be used as an argument in GET-FILE function(will be explained later), which contains custom code for handling different actions when Initiator is receiving a file from Listener.
+<p>
+</font><font face="arial,helvetica" size="2">There are three types of ACTION:
+<p>
+</font><b><pre>    init - this action is called when the filetransfer(Listener-&gt;Initiator) is initiated
+    read - is called  on each sent data chunk of file
+    write - all data are sent (file is fully cached on Initiator side). 
+</pre></b>
+<font face="arial,helvetica" size="2">NOTE: It is up to the handler code to provide further hadling with received file such as renaming it to the original filename, moving to other directory or deleting the cached file...
+<p>
+</font><font face="arial,helvetica" size="2">There is available DATA block! value during the ACTION call containing some useful data which can be used in the handler code:
+<p>
+</font><font face="arial,helvetica" size="2">DATA is a block! value of:
+<p>
+</font><b><pre>    DATA/1 - unique filename when file is cached [string!]
+    DATA/2 - port! of cached file (used for writing during the transfer) [port!]
+    DATA/3 - real filename [string!]
+    DATA/4 - the callback function itself [func!]
+    DATA/5 - total filesize
+    DATA/6 - size of actual received file chunk
+    DATA/7 - transfer destination directory (have to be set on Initiator side)
+</pre></b>
+<font face="arial,helvetica" size="2">an example of GET-FILE callback handler:
+<p>
+</font><b><pre>    get-callback-handler: [
+        switch action [
+            init [
+                print ["started receiving file" data/3 "of size" data/5 "from Listener"]
+            ]
+            read [
+                print ["receiving datachunk of file" data/3 "of size" data/6 "bytes"]
+            ]
+            write [
+                print ["file" data/3 "has been completely received to folder" data/7 "under unique name" data/1]
+            ]
+        ]
+    ]
+</pre></b>
+<p><h3><font face="arial,helvetica" size="3">4.6. POST-FILE callback handler
+</font></h3><p><font face="arial,helvetica" size="2">You can specify a POST-FILE callback handler, which will be used as an argument in PST-FILE function(will be explained later), which contains custom code for handling different actions when Initiator is sendinging a file to Listener.
+<p>
+</font><font face="arial,helvetica" size="2">There are three types of ACTION:
+<p>
+</font><b><pre>    init - this action is called when the filetransfer(Listener-&gt;Initiator) is initiated
+    read - is called  on each sent data chunk of file
+    write - all data are sent (file is fully cached on Initiator side). 
+</pre></b>
+<font face="arial,helvetica" size="2">NOTE: It is up to the handler code to provide further hadling with received file such as renaming it to the original filename, moving to other directory or deleting the cached file...
+<p>
+</font><font face="arial,helvetica" size="2">There is available DATA block! value during the ACTION call containing some useful data which can be used in the handler code:
+<p>
+</font><font face="arial,helvetica" size="2">DATA is a block! value of:
+<p>
+</font><b><pre>    DATA/1 - unique filename when file is cached [string!]
+    DATA/2 - port! of cached file (used for writing during the transfer) [port!]
+    DATA/3 - real filename [string!]
+    DATA/4 - the callback function itself [func!]
+    DATA/5 - total filesize
+    DATA/6 - size of actual received file chunk
+    DATA/7 - transfer destination directory (have to be set on Initiator side)
+</pre></b>
+<font face="arial,helvetica" size="2">an example of POST-FILE callback handler:
+<p>
+</font><b><pre>    post-callback-handler: [
+        switch action [
+            init [
+                print ["start sending file" data/3 "of size" data/5 "to Listener."]
+            ]
+            read [
+                print ["sending datachunk of file" data/3 "of size" data/6 "bytes"]
+            ]
+            write [
+                print ["file" data/3 "has been completely sent to listener"]
+            ]
+        ]
+    ]
+</pre></b>
+</blockquote><HR><A NAME="section-5"></A><p><h2><font face="arial,helvetica" size="4">5. Control functions
+</font></h2><p><blockquote><font face="arial,helvetica" size="2">Now, when you have Initiator and Listener connected you have to use two following control functions to execute the filetransfer on Initiator side.
+<p>
+</font><p><h3><font face="arial,helvetica" size="3">5.1. GET-FILE function
+</font></h3><p><font face="arial,helvetica" size="2">The GET-FILE function issues GET command on appropriate filetransfer channel ie. file is transfered from Listener to Initiator. The syntax of this function is:
+<p>
+</font><b><pre>    GET-FILE channel [object!] blk [block!] callback [block! none!] /dst-dir dst [file!]
+    
+</pre></b>
+<font face="arial,helvetica" size="2">where:
+<p>
+</font><font face="arial,helvetica" size="2">channel - reference to the used FT channel
+<p>
+</font><font face="arial,helvetica" size="2">blk - a block! containing one or more files(if the file is in different folder than 'current dir' you have to specify absolute path with each of the file)
+<p>
+</font><font face="arial,helvetica" size="2">callback - a block! containing GET-callback-handler code(see section above) or none if no callback is required
+<p>
+</font><font face="arial,helvetica" size="2">/dst-file dst - use this refiniment in case you want to store the received files to other than default set folder
+<p>
+</font><font face="arial,helvetica" size="2">an example of GET-FILE function usage:
+<p>
+</font><b><pre>    view/new layout [
+        button "get file(s)" [
+            get-file ft-get request-file get-callback-handler
+        ]
+    ]
+    
+</pre></b>
+<p><h3><font face="arial,helvetica" size="3">5.2. POST-FILE function
+</font></h3><p><font face="arial,helvetica" size="2">The POST-FILE function issues POST command on appropriate filetransfer channel ie. file is transfered from Initiator to Listener. The syntax of this function is:
+<p>
+</font><b><pre>    POST-FILE channel [object!] blk [block!] callback [block! none!]
+    
+</pre></b>
+<font face="arial,helvetica" size="2">where:
+<p>
+</font><font face="arial,helvetica" size="2">channel - reference to the used FT channel
+<p>
+</font><font face="arial,helvetica" size="2">blk - a block! containing one or more files(if the file is in different folder than 'current dir' you have to specify absolute path with each of the file)
+<p>
+</font><font face="arial,helvetica" size="2">callback - a block! containing POST-callback-handler code(see section above) or none if no callback is required
+<p>
+</font><font face="arial,helvetica" size="2">an example of POST-FILE function usage:
+<p>
+</font><b><pre>    view/new layout [
+        button "post file(s)" [
+            post-file ft-post request-file post-callback-handler
+        ]
+    ]
+</pre></b>
+</body></html>

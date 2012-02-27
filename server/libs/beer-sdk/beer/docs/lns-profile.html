@@ -1,0 +1,456 @@
+<html><title>LNS profile
+</title><body>
+<h1><font face="arial,helvetica" size="5">LNS profile
+</font></h1><p><b><pre>    Author: Richard Smolak&lt;cyphre@whywire.com&gt;
+    Date: 4-Jul-2005
+    Version: 0.0.10
+</pre></b>
+<HR><P><h2><font face="arial,helvetica" size="4">Contents:</font></h2><p><blockquote><font face="arial,helvetica" size="2"><B><A HREF="#section-1">1. Purpose
+</A><BR><A HREF="#section-2">2. BEER paths
+</A><BR><A HREF="#section-3">3. Setting up the Listener
+</A><BR><A HREF="#section-4">4. Setting-up the Initiator
+</A><BR><A HREF="#section-5">5. LNS calls
+</A><BR><A HREF="#section-6">6. LNS threads
+</A><BR></B></font></blockquote><HR><A NAME="section-1"></A><p><h2><font face="arial,helvetica" size="4">1. Purpose
+</font></h2><p><blockquote><font face="arial,helvetica" size="2">The Lightweight network services profile (LNS profile) has been written for BEER framework as a high-level layer for handling multiple asynchronous remote procedure calls between BEER listener and BEER initiator and vice versa. The design has been inspired by rough draft about LNS protocol developed by Rebol Technologies.
+<p>
+</font></blockquote><HR><A NAME="section-2"></A><p><h2><font face="arial,helvetica" size="4">2. BEER paths
+</font></h2><p><blockquote><font face="arial,helvetica" size="2">Since the the LNS profile is using BEER framework we need to set-up all used paths before creation of Listener or Initiator. To make it easier this document is using simple Rebol script (paths.r) for path definitions which is called at the beggining of Listener and Initiator scripts. Here is the content of paths.r file:
+<p>
+</font><b><pre>    Rebol [
+        title: "default paths definitions"
+    ]
+    
+    root-path: system/script/path
+    libs-path: root-path/libs
+    beer-path: root-path/BEER
+</pre></b>
+<TABLE BORDER="1" CELLPADDING="3" CELLSPACING="0" WIDTH="80%"><TR><TD WIDTH="100%" BGCOLOR="black"><B><FONT COLOR="white" FACE="Arial, Helvetica"> paths.r location
+</FONT></B></TD></TR><TR><TD WIDTH="100%"><font face="arial,helvetica" size="2">The paths.r file MUST be placed in the root of the whole directory structure (ie. one level up of the BEER folder). So your dir structure should look like this:
+<p>
+</font><b><pre>    BEER/
+    libs/
+    example-project/
+    paths.r
+    
+</pre></b>
+<font face="arial,helvetica" size="2">Where the example-project/ folder will contain all our example code mentioned below in this document.
+<p>
+</font></TD></TR></TABLE></blockquote><HR><A NAME="section-3"></A><p><h2><font face="arial,helvetica" size="4">3. Setting up the Listener
+</font></h2><p><blockquote><p><h3><font face="arial,helvetica" size="3">3.1. Listener initialization
+</font></h3><p><font face="arial,helvetica" size="2">First step is to load all neccesary scripts which will be used by Listener:
+<p>
+</font><b><pre>    ;path file definitions
+    do %../paths.r
+
+    ;supporting libs files  
+    do libs-path/aa.r
+    do libs-path/catch.r
+    do libs-path/atcp-protocol.r
+    
+    ; user database
+    users: load %users.r
+    groups: load %groups.r
+
+    ; BEER files    
+    do beer-path/channel.r
+    do beer-path/frameparser.r
+    do beer-path/frameread.r
+    do beer-path/framesend.r
+    do beer-path/session-handler.r
+    do beer-path/authenticate.r
+    do beer-path/profiles.r
+    do beer-path/listener.r
+        
+    ; encoding string   
+    do %encoding-salt.r
+    
+    ;LNS and threads profile module
+    do beer-path/profiles/threads.r
+    do beer-path/profiles/rpc-profile.r
+</pre></b>
+<p><h3><font face="arial,helvetica" size="3">3.2. Making a service
+</font></h3><p><font face="arial,helvetica" size="2">To create a service use MAKE-SERVICE function:
+<p>
+</font><font face="arial,helvetica" size="2">example of simple service definition:
+<p>
+</font><b><pre>    basic-service: make-service [
+        info: [
+            name: "basic services"
+        ]
+        services: [time info]
+        data: [
+            info [
+                service-names: func [] [
+                    services
+                ]
+                service-obj: func [] [
+                    self
+                ]
+            ]
+            time [
+                get-time: func [][
+                    now/time
+                ]
+            ]
+        ]
+    ]
+</pre></b>
+<p><h3><font face="arial,helvetica" size="3">3.3. Publishing a service
+</font></h3><p><font face="arial,helvetica" size="2">Once you have created a service definition you need to publish it on the Listener side for example:
+<p>
+</font><b><pre>    publish-service basic-service
+</pre></b>
+<p><h3><font face="arial,helvetica" size="3">3.4. Remote service publishing
+</font></h3><p><font face="arial,helvetica" size="2">If you need to publish a service on Listener remotely from Initiator you can do it using:
+<p>
+</font><b><pre>    publish-service/remote my-service lns-channel func [channel result][print "REMOTE PUBLISHING DONE"]
+</pre></b>
+<font face="arial,helvetica" size="2">This way the my-service deffinition bacame available for the current session.
+<p>
+</font><font face="arial,helvetica" size="2">NOTE: Ater closing the session the service removed and unavailable.
+<p>
+</font><p><h3><font face="arial,helvetica" size="3">3.5. Listener start
+</font></h3><p><font face="arial,helvetica" size="2">Last neccesary step is run the Listener on a TCP port. Here is example which starts listener on TCP port 8000:
+<p>
+</font><b><pre>    open-listener 8000
+    do-events
+</pre></b>
+<font face="arial,helvetica" size="2">If you are running Listener with GUI enabled the code sequence should look like this:
+<p>
+</font><b><pre>    open-listener 8000
+    view/new layout [
+        ;your GUI code is here
+        ...
+        ...
+    ]
+    do-events
+</pre></b>
+</blockquote><HR><A NAME="section-4"></A><p><h2><font face="arial,helvetica" size="4">4. Setting-up the Initiator
+</font></h2><p><blockquote><p><h3><font face="arial,helvetica" size="3">4.1. Initiator initialization
+</font></h3><p><font face="arial,helvetica" size="2">First step is to load all neccesary scripts which will be used by Initiator:
+<p>
+</font><b><pre>    ;path file definitions
+    do %../paths.r
+
+    ;supporting libs files  
+    do libs-path/aa.r
+    do libs-path/catch.r
+    do libs-path/atcp-protocol.r
+    
+    ; user database
+    users: load %users.r
+    groups: load %groups.r
+
+    ; BEER files    
+    do beer-path/channel.r
+    do beer-path/frameparser.r
+    do beer-path/frameread.r
+    do beer-path/framesend.r
+    do beer-path/session-handler.r
+    do beer-path/authenticate.r
+    do beer-path/profiles.r
+    do beer-path/initiator.r
+        
+    ; encoding string   
+    do %encoding-salt.r
+    
+    ;LNS profile module
+    do beer-path/profiles/rpc-profile.r
+</pre></b>
+<p><h3><font face="arial,helvetica" size="3">4.2. Establishing of a LNS session(open-session)
+</font></h3><p><font face="arial,helvetica" size="2">In case of the Initiator role you need to establish a session with any runnign Listener(with enabled LNS profile). For that you need to know an IP addres and port on which the Listener is running.
+<p>
+</font><font face="arial,helvetica" size="2">To open a session use function OPEN-SESSION with following syntax:
+<p>
+</font><b><pre> OPEN-SESSION url [url!] callback [function!]
+ 
+</pre></b>
+<font face="arial,helvetica" size="2">Here is an example of establishing a session:
+<p>
+</font><b><pre>    open-session atcp://127.0.0.1:8000 func [port] [
+        either port? port [
+            ;define a global reference to the connection
+            peer: port
+            print ["Connected to listener:" peer/sub-port/remote-ip now]
+            ;aproach login sequence call
+            do-login
+        ][
+            ;an error occured, print the error message
+            print port
+        ]
+    ]
+    
+    do-login: does [
+        ;use your own username and password here
+        login aa/get peer/user-data/channels 0 "root" "root-pass" func [result] [
+            either result [
+                print "logged in as Root"
+                ;continue with opening a GET filetransfer channel
+                open-lns
+            ][
+                print "login unsuccessful"
+            ]
+        ]
+    ]
+</pre></b>
+<p><h3><font face="arial,helvetica" size="3">4.3. Opening LNS channel
+</font></h3><p><font face="arial,helvetica" size="2">After succesful login to the Listener you can finally open one or more LNS channels.
+<p>
+</font><font face="arial,helvetica" size="2">An example of opening one LNS channel:
+<p>
+</font><b><pre>    open-lns: does [
+        open-channel peer 'rpc 1.0.0 func [channel] [
+            either channel [
+                lns-channel: channel
+                print "Channel LNS open"
+                do-main
+            ] [print "didn't succeed to open unsecure echo channel"]
+        ]
+    ]
+
+
+    do-main: does [
+        ;here is rest of your code applicaton
+    ]
+
+    ;main event loop
+    do-events
+</pre></b>
+<TABLE BORDER="1" CELLPADDING="3" CELLSPACING="0" WIDTH="80%"><TR><TD WIDTH="100%" BGCOLOR="black"><B><FONT COLOR="white" FACE="Arial, Helvetica"> Async behaviour
+</FONT></B></TD></TR><TR><TD WIDTH="100%"><font face="arial,helvetica" size="2">As you could noticed from the code above the flow of commands have to be written using callbacks due to asynchronous behaviour of the BEER framework.
+<p>
+</font></TD></TR></TABLE></blockquote><HR><A NAME="section-5"></A><p><h2><font face="arial,helvetica" size="4">5. LNS calls
+</font></h2><p><blockquote><p><h3><font face="arial,helvetica" size="3">5.1. SEND-SERVICE
+</font></h3><p><font face="arial,helvetica" size="2">To execute one or more remote service calls you have to use SEND-SERVICE function. THe syntax of the function is:
+<p>
+</font><b><pre>    SEND-SERVICE channel [object!] service-name [string!] command-block [block!] callback [function!]
+</pre></b>
+<font face="arial,helvetica" size="2">where:
+<p>
+</font><font face="arial,helvetica" size="2">channel - a reference to the used LNS channel
+<p>
+</font><font face="arial,helvetica" size="2">service-name - a string containing the name of service you are going to use
+<p>
+</font><font face="arial,helvetica" size="2">command-block - a block of LNS dialect commands and calls(see explained below)
+<p>
+</font><font face="arial,helvetica" size="2">callback - function callback which is executed after Listener returns a result of the SEND-SERVICE request. The callback function has two arguments CHANNEL and RESULT which can be used in the callback code.
+<p>
+</font><font face="arial,helvetica" size="2">simple example of SEND-SERVICE call usage:
+<p>
+</font><b><pre>    send-service lns-channel "basic services" [
+        [service time]
+        [get-time]
+    ] func [channel result][
+        print "result of service:"
+        probe result
+    ]
+</pre></b>
+<p><h3><font face="arial,helvetica" size="3">5.2. Command block
+</font></h3><p><font face="arial,helvetica" size="2">The SEND-SERVICE function is using a command-block as one of its arguments. The command-block should contain one or more commands. Each command have to be written in a sub-block.
+<p>
+</font><font face="arial,helvetica" size="2">Example command-block below is calling one simple service call GET-TIME:
+<p>
+</font><b><pre>    [
+        [service time]
+        [get-time]
+    ]
+</pre></b>
+<font face="arial,helvetica" size="2">The result of such service call could look like:
+<p>
+</font><b><pre>    [
+        done [commands 1 time 0:00]
+        ok [get-time 14:28:43]
+    ]
+</pre></b>
+<font face="arial,helvetica" size="2">As you can see the result block always contains:
+<p>
+</font><ul><li><font face="arial,helvetica" size="2">generic status information line by either DONE word followed with a block containing info about number of processed commands and time which takes the whole operation or ERROR word followed by a block containing Rebol standard error object.
+<p>
+</font><li><font face="arial,helvetica" size="2">one or more lines containing results of each requested command. Each result can be OK word followed by a block of command name and result of the command or a FAIL word followed by a block of command name and standard Rebol error object.
+<p>
+</font></ul><font face="arial,helvetica" size="2">An example of multiple service calls:
+<p>
+</font><b><pre>    [
+        [service time]
+        [get-time]
+        [service info]
+        [service-names]
+        [service-obj]
+    ]
+</pre></b>
+<font face="arial,helvetica" size="2">the result of such command could look like this:
+<p>
+</font><b><pre>    [
+        done [commands 3 time 0:00]
+        ok [get-time 14:40:01]
+        ok [service-names [time info]]
+        ok [service-obj
+            make object! [
+                service-names: func [][
+                    services]
+                service-obj: func [][
+                    self]
+            ]
+        ]
+    ]
+</pre></b>
+<p><h3><font face="arial,helvetica" size="3">5.3. Errors during LNS call
+</font></h3><p><font face="arial,helvetica" size="2">An example of errorneous call could be:
+<p>
+</font><b><pre>    [
+        [service time]
+        [get-timer]
+    ]
+</pre></b>
+<font face="arial,helvetica" size="2">and the result:
+<p>
+</font><b><pre>    [
+        error [command-failed]
+        fail [get-timer {
+            make object! [
+                code: 800
+                type: 'user
+                id: 'message
+                arg1: "service not found"
+                arg2: none
+                arg3: none
+                near: [make error! "service not found"]
+                where: none
+            ]
+        }]
+    ]
+    
+    
+</pre></b>
+<font face="arial,helvetica" size="2">Another example of error during the exectuion of existing service call:
+<p>
+</font><font face="arial,helvetica" size="2">Let's have this service published on the Listener:
+<p>
+</font><b><pre>    my-services: make-service [
+        info: [
+            name: "my services"
+        ]
+        services: [calc]
+        data: [
+            calc [
+                calc-result: func [input][
+                    do input
+                ]
+            ]
+        ]
+    ]
+</pre></b>
+<font face="arial,helvetica" size="2">Then use following LNS request:
+<p>
+</font><b><pre>    send-service rpc "my services" [
+        [service calc]
+        [calc-result 1 + 2 + 5 / 2]
+        [calc-result 10 / 0]
+    ] func [channel result][
+        probe result
+    ]
+</pre></b>
+<font face="arial,helvetica" size="2">The result will be then:
+<p>
+</font><b><pre>    
+    [
+        error [command-failed]
+        ok [calc-result
+            [1 + 2 + 5 / 2] 4]
+        fail [calc-result 10 / 0 {
+            make object! [
+                code: 400
+                type: 'math
+                id: 'zero-divide
+                arg1: none
+                arg2: none
+                arg3: none
+                near: [calc-result 10 / 0]
+                where: 'read-msg
+            ]
+        }]
+    ]
+</pre></b>
+<font face="arial,helvetica" size="2">You can see in the example above that the second command caused a 'divide by zero' error on the Listener side.
+<p>
+</font></blockquote><HR><A NAME="section-6"></A><p><h2><font face="arial,helvetica" size="4">6. LNS threads
+</font></h2><p><blockquote><font face="arial,helvetica" size="2">The LNS profile is also using very simple threading for execution of delayed, scheduled or repeated service calls.
+<p>
+</font><p><h3><font face="arial,helvetica" size="3">6.1. Thread types
+</font></h3><p><font face="arial,helvetica" size="2">There are three commands for different thread modes:
+<p>
+</font><ul><li><font face="arial,helvetica" size="2">REPEAT [time!] | [integer!] - will be called periodically until it is killed. You can specify the period either by amount of time or by frequency.
+<p>
+</font><li><font face="arial,helvetica" size="2">AFTER [time!] - is called after some amount of time.
+<p>
+</font><li><font face="arial,helvetica" size="2">schedule [time!] - is scheduled to aboslute time event.
+<p>
+</font></ul><font face="arial,helvetica" size="2">examples:
+<p>
+</font><b><pre>    [
+        [service time]
+        [repeat 1 get-time] ;will return time on every second
+        [after 00:00:05 get-time] ;will retunr time after 5 seconds
+        [schedule 18-Jul-2005/15:30:26+2:00 get-time] ;will return time on the specified date
+        [schedule (now + 0:0:15) get-time] ;will return tie after 15 minutes. By specifying the time value in parens you force to evaluate it on the listener side(useful when times on both machines differs etc.)
+    ]
+</pre></b>
+<p><h3><font face="arial,helvetica" size="3">6.2. Executing thread
+</font></h3><p><font face="arial,helvetica" size="2">When you execute a thread the Listener returns a unique thread ID with the first result so you can store it and use in your applicoation for future handling of this thread.
+<p>
+</font><font face="arial,helvetica" size="2">example:
+<p>
+</font><font face="arial,helvetica" size="2">you requested execution of following thread:
+<p>
+</font><b><pre>    [
+            [service time]
+            [repeat 1 get-time]
+    ]
+</pre></b>
+<font face="arial,helvetica" size="2">the result from Listener could look like:
+<p>
+</font><b><pre>    [
+        done [commands 1 time 0:00:00.01]
+        ok [
+            get-time [thread-added "B8C3E59AB7B3052BA7A091BC62219FEED48D7496" 4-Jul-2005/15:35:09.005+2:00]
+        ]
+    ]
+</pre></b>
+<font face="arial,helvetica" size="2">Please note the long alphanumeric string after the THREAD-ADDED word. This is the thread ID of your requested repeated LNS call. There is also timestamp when the threas was added to execution queue on the Listener side.
+<p>
+</font><font face="arial,helvetica" size="2">So from now the Initiator should receive result of the executed thread every second:
+<p>
+</font><b><pre>    [thread "B8C3E59AB7B3052BA7A091BC62219FEED48D7496" [15:35:10]]
+    [thread "B8C3E59AB7B3052BA7A091BC62219FEED48D7496" [15:35:11]]
+    [thread "B8C3E59AB7B3052BA7A091BC62219FEED48D7496" [15:35:12]]
+    ...
+    ...
+</pre></b>
+<font face="arial,helvetica" size="2">the result of thread has always this format:
+<p>
+</font><b><pre>    THREAD thread-id result-block
+    
+</pre></b>
+<font face="arial,helvetica" size="2">That way you can easily decide in your callback handler code which result of which thread you are receiving.
+<p>
+</font><p><h3><font face="arial,helvetica" size="3">6.3. Killing thread
+</font></h3><p><font face="arial,helvetica" size="2">All you have to know to kill a thread is the thread ID. The you can send anytime LNS call containing this command:
+<p>
+</font><b><pre>    [
+        [kill-thread "B8C3E59AB7B3052BA7A091BC62219FEED48D7496"]
+    ]
+    
+</pre></b>
+<font face="arial,helvetica" size="2">As you can see from the example above this LNS command would kill the running thread from example of previous section.
+<p>
+</font><font face="arial,helvetica" size="2">The result of such KILL-THREAD request could look like:
+<p>
+</font><b><pre>    [
+        done [commands 1 time 0:00]
+        ok [kill-thread ["BAFE335EA1C7347377BE80B796ACFC083B49C55C"][true]]
+    ]
+</pre></b>
+<font face="arial,helvetica" size="2">In this case you can see the thread has been succesfuly killed.
+<p>
+</font></body></html>
