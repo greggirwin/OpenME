@@ -8,7 +8,7 @@ Rebol [
 	date: 2012-02-25
 	version: 0.0.5
 	encap: [ title "OpenME Server v0.0.5 " quiet secure none]
-	
+	requires: [view 2.7.8 SDK 2.7.8]
 	
 	license: 'BSD
 	
@@ -57,7 +57,7 @@ Rebol [
 DEBUG?: FALSE
 ;DEBUG?: TRUE 
 
-SERVER-VERSION: 0.0.3
+SERVER-VERSION: system/script/header/version
 
 EXPIRY-DATE: either DEBUG? [
 	now - 1 ; we just force the expiry all the time in order to show the update requestor while in dev.
@@ -119,7 +119,7 @@ do %libs/beer-sdk/libs/aa.r
 do %libs/beer-sdk/libs/catch.r
 do %libs/beer-sdk/libs/iatcp-protocol.r
 
-do %encoding-salt.r  ; we now use the salt which is local to the synapse server script.
+do %encoding-salt.r  ; we now use the salt which is local to the OpenME server script.
 
 do %libs/beer-sdk/beer/channel.r
 do %libs/beer-sdk/beer/frameparser.r
@@ -282,7 +282,7 @@ is64BitWindows?: func [][
 ;;--------------------------
 ;restartODBC: has [ err ] [
 ;	if error? set/any 'err try [
-;		attempt [ stop-DB ]
+;		attempt [ db-stop ]
 ;		recycle
 ;		openODBC
 ;		return "Restarted ODBC"
@@ -378,36 +378,36 @@ display: func[v][
 ]
 
 
-
-;--------------------------
-;-     first-time-setup-dialog()
-;--------------------------
-first-time-setup-dialog: funct [][
-	continue?: false
-	; probe mold disarm err
-	; print "Fatal error - unable to open odbc connection to remr database"
-	; halt
-	view center-face layout [
-		across
-		h1 "Synapse Chat Server" red return
-		h2 "First Time Install?" return
-		info 350x160 wrap (rejoin [
-			"This screen has appeared as we can not open a connection to the database."
-			LINES
-			"This could be because another copy of the program is running, or you have yet to install the Synapse Chat Server."
-			LINES
-			"If the latter is correct, you need to download the Firebird Database software, the Firebird ODBC connector, and the chat database."
-		])
-		return
-		pad 250 
-		btn "Proceed" [ continue?: true unview ] 
-		btn "Quit" [ quit ]
-		
-		unless continue? [
-		   quit
-		]
-	]
-]
+;
+;;--------------------------
+;;-     first-time-setup-dialog()
+;;--------------------------
+;first-time-setup-dialog: funct [][
+;	continue?: false
+;	; probe mold disarm err
+;	; print "Fatal error - unable to open odbc connection to remr database"
+;	; halt
+;	view center-face layout [
+;		across
+;		h1 "Synapse Chat Server" red return
+;		h2 "First Time Install?" return
+;		info 350x160 wrap (rejoin [
+;			"This screen has appeared as we can not open a connection to the database."
+;			LINES
+;			"This could be because another copy of the program is running, or you have yet to install the Synapse Chat Server."
+;			LINES
+;			"If the latter is correct, you need to download the Firebird Database software, the Firebird ODBC connector, and the chat database."
+;		])
+;		return
+;		pad 250 
+;		btn "Proceed" [ continue?: true unview ] 
+;		btn "Quit" [ quit ]
+;		
+;		unless continue? [
+;		   quit
+;		]
+;	]
+;]
 
 
 
@@ -704,7 +704,7 @@ do %libs/beer-sdk/beer/authenticate.r
 ; don't know why the following file is executed a second time, but it seems like its required (removing it broke logins).
 ; maybe beer runs its own encoding-salt.r file and it tampers with our setup.
 ;-------------
-do %encoding-salt.r
+;do %encoding-salt.r
 
 
 
@@ -759,7 +759,7 @@ if all [
 	users = 0
 ][
 	; create the new admin user.
-	add-user-dialog/admin
+	add-user-dialog/admin/quit-mode
 ]
 
 
@@ -840,10 +840,10 @@ attempt [
 		origin 30x10
 		pad 0x90
 
-		h2 "Synapse Chat control panel"  
+		h2 "OpenME Chat control panel"  
 		return
 		
-		btn "Shut down" [ stop-DB quit ] 
+		btn "Shut down" [ db-stop quit ] 
 		btn "Add User" [ add-user-dialog ]
 		btn "Reload Users" [build-userfile]
 		
@@ -884,43 +884,6 @@ attempt [
 
 
 
-case: func [[throw catch]
-	{
-		Polymorphic If
-		lazy evaluation
-		no default (use True guard instead)
-		If/Either compatibility:
-			guard checking (unset not allowed)
-			non-logic guards allowed
-			block checking (after a guard only a block allowed)
-			computed blocks allowed
-			Return working
-			Exit working
-			Break working
-	}
-	args [block!] /local res
-] [
-	either unset? first res: do/next args [
-		if not empty? args [
-			; invalid guard
-			throw  make error! [script no-arg case condition]
-		]
-	] [
-		either first res [
-			either block? first res: do/next second res [
-				do first res
-			] [
-				; not a block
-				throw make error! [
-					script expect-arg case block [block!]
-				]
-			]
-		] [
-			case second do/next second res
-		]
-	]
-]
-
 
 
 ; sessions: copy []
@@ -942,7 +905,7 @@ default-user: make object! [
 
 userobj: default-user
 
-print [ "Synapse Chat Server " server-version " serving .... on port " userobj/port ]
+print [ "OpenME chat Server " server-version " serving .... on port " userobj/port ]
 ; enterLog "Restart" "Admin" "Normal start"
 
 basic-service: make-service [
@@ -971,7 +934,7 @@ basic-service: make-service [
 					activ: "F"
 					insert db-port [{insert into USERS (userid, rights, fname, surname, reminder, answer, email, gender, pass, activ, pwd ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)} userid 1 fname sname secret answer email gender pwd  "F" pass]
 					attempt [
-							send compkarori@gmail.com join "New user registration on Synapse Chat: " userid
+							send compkarori@gmail.com join "New user registration on OpenME Chat: " userid
 					]
 					attempt [
 						send/subject to-email email 
@@ -1023,7 +986,7 @@ basic-service: make-service [
 
 			restart-server: does [
 				print "Client requesting a server restart"
-				stop-DB
+				db-stop
 				; quit
 				launch/quit ""
 			]

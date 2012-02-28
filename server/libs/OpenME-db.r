@@ -492,7 +492,7 @@ slim/register [
 			btn 160 "3. Setup OpenME ODBC..." 70  [ block-face gui ODBC-connection-dialog unblock-face gui ]
 			return
 
-			pad 250x30
+			pad 215x30
 			btn "Launch" 70 [
 				either db-connected? [
 					unview/all
@@ -504,7 +504,7 @@ slim/register [
 					]
 				] 
 			]
-			;btn "Quit" 70 [done?: true]
+			btn "Quit" 70 [	quit ]
 			
 			origin 0x20
 		]
@@ -684,9 +684,9 @@ slim/register [
 				LINES
 				"Select the ^"System DSN^" tab (DSN = Data source name), and then click on the ^"Add^" button.  Select the ^"Firebird/Interbase(r) driver^" (Screenshot 2) and then the ^"Finish^" button."
 				LINES
-				{(Screenshot 3) In the ^"Data Source Name (DSN)^" field, enter ^"chat^".  In the ^"Database^" field, enter ^"C:\chat\CHAT.FDB^" or the appropriate path.  You can use the ^"Browse^" button to put the file into the field.  Leave the ^"Client^" field empty.  Enter "SYSDBA" in the "Database Account" field, and "masterkey" in the "Password" field.  Try the "Test Connection" button to check if it is working.  If it is, then click on "OK" to save it.}
+				{(Screenshot 3) In the ^"Data Source Name (DSN)^" field, enter ^"OpenME^".  In the ^"Database^" field, enter ^"C:\chat\CHAT.FDB^" or the appropriate path.  You can use the ^"Browse^" button to put the file into the field.  Leave the ^"Client^" field empty.  Enter "SYSDBA" in the "Database Account" field, and "masterkey" in the "Password" field.  Try the "Test Connection" button to check if it is working.  If it is, then click on "OK" to save it.}
 				LINES		
-				"NB: if you cannot see the Firebird/Interbase(r) driver in your list, its a possibility that its because you installed the 64 bit version by mistake, or that you opened the 64 bit version of the ODBC Manager!"
+				"NB: if you cannot see the Firebird/Interbase(r) driver in your list, maybe you installed the 64 bit version by mistake, or that you opened the 64 bit version of the ODBC Manager!"
 
 			] )
 			return
