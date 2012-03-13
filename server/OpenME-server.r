@@ -137,7 +137,9 @@ do %libs/beer-sdk/beer/listener.r
 do %libs/beer-sdk/beer/profiles/rpc-profile.r
 
 do %libs/beer-sdk/beer/profiles/ft-server-profile.r  ; custom profile to upload from %chat-uploads/
-do %libs/beer-sdk/beer/profiles/pubtalk-profile-new.r
+
+;do %libs/beer-sdk/beer/profiles/pubtalk-profile-new.r
+do %pubtalk-profile-new.r
 
 do %libs/shrink.r ; (for now, this is just for fun) we will probably review this decision and improve it to make it actually helpful.
 
@@ -747,37 +749,9 @@ db-port: db-lib/DB-PORT
 dbase: db-lib/DBASE
 
 ;--------------------------------------------------------------------------------
+; load user groups rights
 
-
-;--------------------------------------------------------------------------------
-; <START OF ZOMBIE CODE?>
-groups: load [
-	root [
-		echo []
-		filetransfer []
-		rpc []
-		PUBTALK-ETIQUETTE []
-	]
-	
-	admin [
-		echo []
-	]
-	
-	chatuser [
-		echo []
-		filetransfer []
-		rpc [register-user get-dir file-exists?]
-		PUBTALK-ETIQUETTE []
-	]
-	
-	anonymous [
-		echo []
-		rpc [register-user]
-		PUBTALK-ETIQUETTE []    
-	]
-]
-; <END OF ZOMBIE CODE?>
-;--------------------------------------------------------------------------------
+groups: load %user-rights.r
 
 
 
