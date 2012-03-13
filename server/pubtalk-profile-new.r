@@ -3,6 +3,8 @@ REBOL [
 
 ]
 
+do %db-firebird-interface.r
+
 ;; Profile summary
 ;;
 ;;    BEER profile PUBTALK-ETIQUETTE
@@ -438,20 +440,7 @@ Clicking on the red text on the button bar slides the button bar left.
 						]
 						parse usercmd ['show 'groups to end] [
 							use [group-list out] [
-								group-list: copy []
-								insert db-port [{select distinct channel from chat where ctype = (?)} "G"]
-								foreach record copy db-port [
-									;; send all the messages to the requester
-									if found? record/1 [
-										append group-list record/1
-									]
-								]
-								;; got all the groups, now get all the messages in each group
-								foreach group copy group-list [
-									insert db-port [{select count(msg) from chat where channel = (?)} group]
-									cnt: pick db-port 1
-									insert find/tail group-list group cnt
-								]
+								group-list: get-channels
 								out: copy "Unique Groups and Message counts^/"
 								foreach [group cnt] group-list [
 									repend out [group " " cnt newline]
@@ -480,8 +469,8 @@ Clicking on the red text on the button bar slides the button bar left.
 									; ndx/3: copy userstate
 									ndx/2/tz: form timezone
 								]
-								; update database
-								insert db-port [{update users set tz = (?) where userid = (?)} form timezone channel/port/user-data/username ]
+								; update timezone for the user
+								set-timezone form timezone channel/port/user-data/username
 								; now update everyone
 								update-room-status
 							]
@@ -495,8 +484,8 @@ Clicking on the red text on the button bar slides the button bar left.
 									; ndx/3: copy userstate
 									ndx/2/city: copy city
 								]
-								; update database
-								insert db-port [{update users set city = (?) where userid = (?)} city channel/port/user-data/username ]
+								; update city
+								set-city city channel/port/user-data/username
 								; now update everyone
 								update-room-status
 							]
