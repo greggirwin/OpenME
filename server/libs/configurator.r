@@ -562,11 +562,40 @@ slim/register [
 				]
 				
 				; series copying is intrinsic to make object. 
-				;  protected 
-				;  error-modes
-				; space-filled
+				;----
+				; protected:
+				; concealed:
+				; space-filled:
+
 			]
 		]
+		
+		
+		;--------------------------
+		;-         import()
+		;--------------------------
+		; purpose:  takes a given config and calls set for each of its tags.
+		;
+		; inputs:   
+		;
+		; returns:  
+		;
+		; notes:    - <TO DO> support advanced capabilities like concealed, types and such.
+		;           - we currently only merge the visible, unprotected and non-dynamic tags.
+		;
+		; tests:    
+		;--------------------------
+		import: funcl [
+			cfg
+		][
+			vin "import()"
+			foreach tag cfg/list-tags [
+				set tag cfg/get tag
+			]
+			vout
+		]
+		
+		
 		
 		;-----------------
 		;-    backup()
@@ -697,7 +726,7 @@ slim/register [
 				vprint/always ["+------------------" utils/fill/with "" (1 + (length? pt)) "-" "+"]
 				vprint/always ["| No Protected tags |"]
 				vprint/always ["+------------------" utils/fill/with "" (1 + (length? pt)) "-" "+"]
-			][	
+			][
 				vprint/always ["+-----------------" utils/fill/with "" (1 + (length? pt)) "-" "+"]
 				vprint/always ["| Protected tags: " pt " |"]
 				vprint/always ["+-----------------" utils/fill/with "" (1 + (length? pt)) "-" "+"]
@@ -711,6 +740,12 @@ slim/register [
 		;-    list()
 		;-----------------
 		; list tags reflecting options.
+		;
+		; <DEPRECATED> The interface of list is meant to be used internally and the refinements are the opposite 
+		;              of what they mean, so the use of this function is highly ambiguous in code.
+		;
+		;              until it is completely refurbished and its new incarnation applied in the code,
+		;              we should use the  list-tags function instead.
 		;-----------------
 		list: func [
 			/opt options "supply folowing args using block of options"
@@ -739,9 +774,50 @@ slim/register [
 			][
 				append ignore protected
 			]
-			list: next first tags
+			list: words-of tags
 			if dynamic [
 				append list next first self/dynamic
+			]
+			vout
+			exclude sort list ignore
+		]
+		
+		
+		;-----------------
+		;-    list-tags()
+		;-----------------
+		; list tags reflecting options.
+		;-----------------
+		list-tags: funcl [
+			/opt options "supply folowing args using block of options"
+			/protected "Also list protected tags"
+			/concealed "don't list concealed"
+			/dynamic "Also list dynamic"
+			;/local ignore list
+		][
+			vin [{!config/list-tags()}]
+			
+			ignore: clear [] ; reuse the same block everytime.
+			
+			
+			options: any [options []]
+			
+			if any [
+				not protected
+				not find options 'protected
+			][
+				append ignore self/protected
+			]
+			
+			if any [
+				concealed
+				not find options 'concealed
+			][
+				append ignore self/concealed
+			]
+			list: words-of tags
+			if dynamic [
+				append list words-of self/dynamic
 			]
 			vout
 			exclude sort list ignore
@@ -982,7 +1058,10 @@ slim/register [
 		doc: none
 		value: none
 		
-		if spec [
+		if all [
+			spec
+			not empty? spec
+		][
 			reduce spec
 			
 			parse spec [

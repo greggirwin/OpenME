@@ -58,7 +58,7 @@ rebol [
 slim/register [
 	;----------------------------------------------------------------------------------------------
 	;
-	;- GLOBAL VALUES
+	;- GLOBAL MODULE VALUES
 	;
 	;----------------------------------------------------------------------------------------------
 	DB-CFG: none
@@ -329,8 +329,7 @@ slim/register [
 		result
 	]
 	
-
-
+	
 	
 	
 	;----------------------------------------------------------------------------------------------
@@ -350,6 +349,45 @@ slim/register [
 	; This is already supported by the !config engine, it just needs to be added (I just didn't have time yet).
 	;----------------------------------------------------------------------------------------------
 	
+	
+	
+	;--------------------------
+	;-     db-extend-configuration()
+	;--------------------------
+	; purpose:  adds this engine's configuration options dynamically.
+	;
+	; inputs:   none
+	;
+	; returns:  the config being used
+	;
+	; notes:    if the db-config wasn't set, this function silently does nothing.
+	;--------------------------
+	db-extend-configuration: funcl [][
+		vin "db-extend-configuration()"
+		
+		if DB-CFG [
+			DB-CFG/set 'db-server "OpenME"
+			DB-CFG/document 'db-server "Host for a DB connection url (DSN if using ODBC)."
+			
+			DB-CFG/set 'db-user "SYSDBA"
+			DB-CFG/document 'db-user "Database User for connection"
+			
+			; note this is stored in plaintext on disk, make sure this file and machine security are appropriate
+			; in future versions, we will be able to encrypt configuration items on the fly.
+			DB-CFG/set 'db-passwd "masterkey"
+			DB-CFG/document 'db-passwd "Database passwd for connection"
+
+			; when it is not set, it tells the db engine that its never been configured and then the db module
+			; will call db-interactive-setup()
+			DB-CFG/set 'db-url #[none]
+			DB-CFG/document 'db-url "The connection string used by the database.^/It will only be set once a successful connection was done"
+		]
+		vout
+		
+		DB-CFG
+	]
+	
+	
 	;--------------------------
 	;-     db-set-config()
 	;--------------------------
@@ -364,18 +402,17 @@ slim/register [
 		/extern DB-CFG
 	][
 		vin "db-set-config()"
-		cfg: if all [
+		
+		DB-CFG: cfg
+		sufficient?: true? all [
 			cfg/set? 'db-server
 			cfg/set? 'db-user
 			cfg/set? 'db-passwd
 			cfg/set? 'db-url
-		][
-			DB-CFG: cfg
-			true
 		]
 		
 		vout
-		cfg
+		sufficient?
 	]
 	
 	
@@ -852,5 +889,7 @@ slim/register [
 	]
 	
 	
+	
+
 	
 ]

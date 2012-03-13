@@ -6,8 +6,8 @@ Rebol [
 	]
 	copyright: "© 2005-2012, Graham Chiu"
 	date: 2012-02-25
-	version: 0.0.5
-	encap: [ title "OpenME Server v0.0.5 " quiet secure none]
+	version: 0.0.7
+	encap: [ title "OpenME Server v0.0.7 " quiet secure none]
 	requires: [view 2.7.8 SDK 2.7.8]
 	
 	license: 'BSD
@@ -35,6 +35,16 @@ Rebol [
 			-added configuration file support and unified application config using configurator module.
 			-rebuilt the database detection and user dialogs on startup.
 			
+		2012-02-28 - v0.0.6 - MOA
+			-further db extraction
+			-ZOMBIE Code identification..  will have to be tested without. (just search for zombie, you'll see everywhere its tagged)
+			-A few Fixes reported by users.
+			-Renamed config file to %OpenME-server.cfg
+			-added error traping on running server.  We can now open up a dialog on known errors.
+		
+		2012-03-12 - v0.0.7 - MOA
+			-db-configuration is now extended within the db layer itself.
+			-
 	}
 	
 	notes: {
@@ -66,20 +76,9 @@ EXPIRY-DATE: either DEBUG? [
 ]
 
 CONFIG: none
-CONFIG-PATH: %OpenME.cfg
+CONFIG-PATH: %OpenME-server.cfg
 
 LINES: "^/^/"
-
-
-
-
-
-;------------------------------
-; <DEPRECATED:MOA>
-;------------------------------
-; make sure in the correct directory
-;change-dir first split-path system/options/boot    
-;------------------------------
 
 
 
@@ -94,7 +93,9 @@ LINES: "^/^/"
 ;-----------------------------------------------
 
 do %libs/slim.r
-db-lib:  slim/open/expose 'OpenME-db		none	[
+
+cfg-lib:  slim/open/expose 'configurator	none	[configure]
+db-lib:   slim/open/expose 'OpenME-db		none	[
 	; low-level functions
 	db-connect db-stop db-connected? db-error? db-do db-get
 	
@@ -102,10 +103,10 @@ db-lib:  slim/open/expose 'OpenME-db		none	[
 	db-get-user-count
 	
 	; configuration stuff
-	db-configured? db-set-config db-interactive-setup db-reset-configuration db-user-setup 
+	db-configured? db-set-config db-interactive-setup db-extend-configuration db-reset-configuration db-user-setup 
 ]
 
-cfg-lib: slim/open/expose 'configurator		none	[configure]
+
 
 ; do not show verbosity by default. uncomment to show library verbosity on startup
 ;db-lib/von
@@ -138,7 +139,9 @@ do %libs/beer-sdk/beer/profiles/rpc-profile.r
 do %libs/beer-sdk/beer/profiles/ft-server-profile.r  ; custom profile to upload from %chat-uploads/
 do %libs/beer-sdk/beer/profiles/pubtalk-profile-new.r
 
-do %libs/shrink.r ; (for now, this is just for fun) we will probably review this decision and improve it to make it actually helpfull.
+do %libs/shrink.r ; (for now, this is just for fun) we will probably review this decision and improve it to make it actually helpful.
+
+do %libs/beer-sdk/beer/authenticate.r
 
 ;-----------------------------------------------
 ;
@@ -151,20 +154,23 @@ do %libs/shrink.r ; (for now, this is just for fun) we will probably review this
 CONFIG: configure compose [
 	root-dir:	(clean-path what-dir)	"Path the application is launched from."
 	unattended?: #[false]				"is this server running without any user attention?^/when true, will fail on errors instead of trying to get user attention."
-	db-server:	"OpenME"				"Host for a DB connection url (DSN if using ODBC)."
-	db-user:	"SYSDBA"				"Database User for connection"
-	db-passwd:	"masterkey"				"Database passwd for connection"	; note this is stored in plaintext on disk, make sure this file and machine security are appropriate
-																			; in future versions, we will be able to encrypt configuration items on the fly.
-	db-url:		#[none]					"The connection string used by the database.^/It will only be set once a successful connection was done" ; when it is not set, it tells the db engine that its never been configured and then the db module
-																																				 ; will call db-interactive-setup()
 ]
 
 CONFIG/app-label: rejoin ["OpenME/server v" system/script/header/version]
 
-; load any user configuration from disk.
-CONFIG/from-disk/using CONFIG-PATH
-
+; if the db stuff was setup before, it will allow the server to startup directly,
+; otherwise, the server will open up setup panes.
 db-set-config CONFIG
+
+; this will add db library configurations to the default configs.
+; if we have a config on disk, these items will be reloaded from disk.
+;
+; even though they aren't part of the application configs!  This is one 
+; of the powerful uses of the configurator module.
+db-extend-configuration
+
+; load all configuration from disk (if it really exists).
+CONFIG/from-disk/using CONFIG-PATH
 
 
 
@@ -179,7 +185,6 @@ db-set-config CONFIG
 ;----------------------------------------------------------------------------------------------
 STYLIZE/master [
 	Banner: BOX edge none 600x85 %libs/images/OpenME-banner_server.png effect none
-	;text: text right 70 
 	field: field edge [color: gray effect: 'ibevel size: 1x1]  with [size/y: 20]
 	info: info left wrap 580  edge none
 ] 
@@ -255,55 +260,11 @@ is64BitWindows?: func [][
 
 
 
-
-;
-;
-;;--------------------------
-;;-     OpenODBC()
-;;--------------------------
-;OpenODBC: does [
-;	either DB-URL [
-;		if error? set/any 'err try [
-;			DBASE: open DB-URL
-;			db-port: first DBASE
-;		][
-;			odbc-connection-error-dialog
-;		]
-;	][
-;		create-odbc-connection-dialog
-;	]
-;]
-;
-;
-;
-;
-;;--------------------------
-;;-     restartODBC()
-;;--------------------------
-;restartODBC: has [ err ] [
-;	if error? set/any 'err try [
-;		attempt [ db-stop ]
-;		recycle
-;		openODBC
-;		return "Restarted ODBC"
-;	][ print mold disarm err return "Error on restarting ODBC" ]
-;]
-;
-;
-
-
-
-
-
-
-
 ;-----------------------------------------------
 ;
 ;- FUNCTIONS (User Interface, text or graphical)
 ;
 ;-----------------------------------------------
-
-
 
 ;--------------------------
 ;-     request-update()
@@ -321,7 +282,10 @@ request-update: funcl [
 	continue?: false
 	vin "request-update()"
 	
-	if newer-OpenME-version? [
+	if all [
+		not CONFIG/get 'unattended?
+		newer-OpenME-version? 
+	][
 		view center-face layout compose [
 			across
 			origin 0x0
@@ -371,7 +335,7 @@ request-update: funcl [
 
 
 ;--------------------------
-;-     display()
+;-     display()  <ZOMBIE?>
 ;--------------------------
 display: func[v][
 	print ["display:" mold v]
@@ -577,7 +541,6 @@ add-user-dialog: funcl [
 
 		
 		
-
 		
 
 
@@ -689,20 +652,22 @@ ft-profile/post-handler: [
 
 ;-----------------------------------------------
 ;
-;- AUTHENTICATION
-;
+;- <ZOMBIE CODE ALERT> (MOA)
 ;
 ; don't know why the original chat included files midway into the app, 
 ; possibly irrelevant.
 ;
-; <TO DO> test putting this at the top, like the other libs.
+; <deprecated> waiting for a few releases to make sure this really wasn't needed
 ;-----------------------------------------------
-do %libs/beer-sdk/beer/authenticate.r
+;do %libs/beer-sdk/beer/authenticate.r
 
 ;-------------
 ; <NOTES: MOA>
+;
 ; don't know why the following file is executed a second time, but it seems like its required (removing it broke logins).
-; maybe beer runs its own encoding-salt.r file and it tampers with our setup.
+; seems like it was just a bogus problem ... it seems to work now.
+;
+; <deprecated> waiting for a few releases to make sure this really wasn't needed
 ;-------------
 ;do %encoding-salt.r
 
@@ -718,6 +683,13 @@ do %libs/beer-sdk/beer/authenticate.r
 
 ; check if the server is really up to date
 request-update
+
+
+
+
+
+
+
 
 
 ;-----------------------------------------
@@ -777,6 +749,8 @@ dbase: db-lib/DBASE
 ;--------------------------------------------------------------------------------
 
 
+;--------------------------------------------------------------------------------
+; <START OF ZOMBIE CODE?>
 groups: load [
 	root [
 		echo []
@@ -802,13 +776,42 @@ groups: load [
 		PUBTALK-ETIQUETTE []    
 	]
 ]
+; <END OF ZOMBIE CODE?>
+;--------------------------------------------------------------------------------
 
-do build-userfile: has [ security ][
-	users: load {"anonymous" #{} nologin [anonymous]
-	"listener" #{} nologin [monitor]
-	"root" #{F71C2F645E81504EB9CC7AFC35C7777993957B4D} login [root]
-	}
 
+
+
+
+;--------------------------
+;-     build-userfile()
+;--------------------------
+; purpose:  really have no clue.  <ZOMBIE?>
+;
+; inputs:   none
+;
+; returns:  the user list
+;
+; notes:    it seems that this function sets a global value called USERS 
+;           but its not used ANYWHERE in the server... is this used deep within BEER?
+;
+; tests:    
+;--------------------------
+build-userfile: funcl [
+	/extern users
+][
+;	users: load {"anonymous" #{} nologin [anonymous]
+;	"listener" #{} nologin [monitor]
+;	"root" #{F71C2F645E81504EB9CC7AFC35C7777993957B4D} login [root]
+;	}
+	USERS: copy/deep [
+		"anonymous" #{} nologin [anonymous]
+		"listener" #{} nologin [monitor]
+		"root" #{F71C2F645E81504EB9CC7AFC35C7777993957B4D} login [root]
+	]
+
+	;usrs: db-user-list
+	
 	insert db-port {select userid, pass, rights from users where activ = 'T'}
 
 	foreach record copy db-port [
@@ -818,9 +821,10 @@ do build-userfile: has [ security ][
 			1 [ security: to-word "chatuser" ]
 			5 [ security: to-word "root" ]
 		][ security: to-word "root" ]
-		repend users compose/deep [ record/1 load record/2 'login [ (security) ]  ]
+		repend USERS compose/deep [ record/1 load record/2 'login [ (security) ]  ]
 
 	]
+	vout
 ]
 
 
@@ -829,6 +833,9 @@ do build-userfile: has [ security ][
 ;- MAIN CONTROL PANEL
 ;
 ;-----------------------------------------------
+build-userfile
+
+
 attempt [
 	view/new layout [
 		backdrop white
@@ -905,8 +912,7 @@ default-user: make object! [
 
 userobj: default-user
 
-print [ "OpenME chat Server " server-version " serving .... on port " userobj/port ]
-; enterLog "Restart" "Admin" "Normal start"
+; enterLog "Restart" "Admin" "Normal start" <ZOMBIE?>
 
 basic-service: make-service [
 	info: [
@@ -1035,40 +1041,127 @@ publish-service basic-service
 
 ; chat-users: copy []
 
-open-listener/callback userobj/port func [peer] [
-	use [remote-ip remote-port peer-port ip-port] [
-
-		print ["New mate on the bar" peer/sub-port/remote-ip peer/sub-port/remote-port]
-		peer-port: :peer
-		peer/user-data/on-close: func [msg /local channel] [
-			print ["Mate left" peer-port/user-data/username peer-port/user-data/remote-ip peer-port/user-data/remote-port "reason:" msg]
-			; clean up by removing disconnected clients
-			msg-to-all mold/all reduce ['gchat
-										["lobby"]
-										reduce
-										["Hal4000" red rejoin [peer-port/user-data/username " has just left the building"] black white [] now]
-									]
-			if error? set/any 'err try [                       
-				insert db-port [ {update USERS set laston = 'NOW' where userid = (?)} peer-port/user-data/username ]            
-			][
-				probe mold disarm err
-			]            
-			print ["before removal users: " length? chatroom-peers]
-				use [chat-users temp-table] [
-				; first remove disconnected clients 
-				forall chatroom-peers [
-					if chatroom-peers/1/port/locals/peer-close [
-						remove chatroom-peers
+if error? server-error: try [
+	open-listener/callback userobj/port func [peer] [
+		use [remote-ip remote-port peer-port ip-port] [
+	
+			print ["New mate on the bar" peer/sub-port/remote-ip peer/sub-port/remote-port]
+			peer-port: :peer
+			peer/user-data/on-close: func [msg /local channel] [
+				print ["Mate left" peer-port/user-data/username peer-port/user-data/remote-ip peer-port/user-data/remote-port "reason:" msg]
+				; clean up by removing disconnected clients
+				msg-to-all mold/all reduce ['gchat
+											["lobby"]
+											reduce
+											["Hal4000" red rejoin [peer-port/user-data/username " has just left the building"] black white [] now]
+										]
+				if error? set/any 'err try [                       
+					insert db-port [ {update USERS set laston = 'NOW' where userid = (?)} peer-port/user-data/username ]            
+				][
+					probe mold disarm err
+				]            
+				print ["before removal users: " length? chatroom-peers]
+					use [chat-users temp-table] [
+					; first remove disconnected clients 
+					forall chatroom-peers [
+						if chatroom-peers/1/port/locals/peer-close [
+							remove chatroom-peers
+						]
 					]
+					rebuild-user-table
 				]
-				rebuild-user-table
 			]
 		]
 	]
+	print [ "OpenME chat Server " server-version " serving .... on port " userobj/port ]
+
+	
+	do-events
+
+][
+	;-------------------------------------------------------------------
+	;
+	;- SERVER FAILURES REPORTING
+	;
+	;-------------------------------------------------------------------
+	server-error: mold disarm server-error
+	error-msg: none
+	
+	;--------------------
+	;-     Identify Known errors
+	;--------------------
+	CASE [
+		;-----------------------------------
+		; Can't open BEER listening port
+		all [
+			find server-error "listener: open/binary/direct/no-wait"
+			find server-error "port-id: beer-port-id"
+		][
+			error-msg: "Another server application is already listening on TCP Port 8012, maybe you already launched OpenME/server ?"
+		]
+		
+		;-----------------------------------
+		; Trap other errors here:
+		;-----------------------------------
+		
+	]
+	
+	;--------------------
+	;-     Report errors
+	;--------------------
+	either error-msg [
+		;--------------------
+		;-         -Known errors
+		;--------------------
+		either CONFIG/get 'unattended?  [
+			vprint/always "-------------------------------"
+			vprint/always "ERROR in OpenME Server :"
+			vprint/always "-------------------------------"
+			vprint/always error-msg
+		][
+			show-popup center-face layout [
+			
+				backdrop white
+				across
+				
+				origin 0x0
+				banner 300
+				
+				origin 30x10
+				pad 0x90
+				
+				h2 "ERROR!"
+				return
+			
+				pad 15x0
+				text 250 as-is error-msg
+				return
+				
+				pad 100x20
+				btn "Quit" [quit]
+				
+				origin 0x20
+			]
+			do-events ; makes the popup modal and makes sure the event loop wasn't mangled by the error itself.
+			quit
+		]
+	][
+		;--------------------
+		;-         -Unknown errors
+		;--------------------
+		vprint/always "-------------------------------"
+		vprint/always "ERROR in OpenME Server :"
+		vprint/always "-------------------------------"
+		vprobe/always server-error
+		if not CONFIG/get 'unattended? [
+			ask "^/^/press Enter to Quit..."
+		]
+		quit
+	]
 ]
 
-do-events
 
+quit
 
 
 

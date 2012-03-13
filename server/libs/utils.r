@@ -83,6 +83,29 @@ slim/register [
 		
 	
 	
+	;--------------------------
+	;-     within()
+	;--------------------------
+	; purpose:  a none-transparent version of 'IN
+	;
+	; inputs:   
+	;
+	; returns:  
+	;
+	; notes:    
+	;
+	; tests:    
+	;--------------------------
+	within: funcl [
+		data [object! port! none!]
+		index [any-word!]
+	][
+		if data [
+			in data index
+		]
+	]
+	
+	
 	
 	;--------------------------
 	;-     extract-set-words()

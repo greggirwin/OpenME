@@ -804,7 +804,7 @@ SLiM: make object! [
 					system/words/remove/part find libs lib/header/slim-name 2
 				]
 			][
-				probe lib/header/slim-name
+				vprobe lib/header/slim-name
 				if ( cached? lib/header/slim-name )[
 					vprint rejoin [{STEEL|SLiM/cache()  replacing module: "} uppercase to-string lib/header/slim-name {"} ]
 					; if the library was cached, then remove it from libs block
