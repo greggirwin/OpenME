@@ -118,7 +118,7 @@ get-messages-with: func [
 			; lowercase author
 			insert db-port [{select msg, format, ctype from chat where msgdate > (?) and author = (?) order by msgdate asc} date author]
 		]
-		all [author group] [
+		all [author channel] [
 			; lowercase author lowercase group
 			insert db-port [{select msg from, format, ctype chat where msgdate > (?) and author =(?) and CHANNEL = (?) order by msgdate asc} date author channel]
 		]
