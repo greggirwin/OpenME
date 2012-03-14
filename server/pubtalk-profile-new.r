@@ -59,9 +59,8 @@ rebuild-user-table: func [/local temp-table state t] [
 	user-table: copy []
 	repend user-table ["0.0.0.0:0" Eliza-obj]
 	;; now should get all the registered users and add them
-	insert db-port {select userid, city, email, tz, laston from users where activ = 'T'}
 	cnt: 1
-	foreach record copy db-port [
+	foreach record get-users [
 		probe record/5
 		state: copy "-"
 		
@@ -358,7 +357,8 @@ Clicking on the red text on the button bar slides the button bar left.
 								txt: copy private-msg/3/3
 								; and now we remove the txt from the message
 								private-msg/3/3: copy ""
-								insert db-port [{insert into CHAT ( author, CHANNEL, msg, format, ctype ) values (?, ?, ?, ?, ?) } private-msg/3/1 private-msg/2/1 txt private-msg "P"]
+								; write-chat (author, CHANNEL, msg, format, ctype)
+								write-chat private-msg/3/1 private-msg/2/1 txt private-msg "P"
 								print "Private message saved into chat table"
 							] [
 								print "Insert chat message failed because..."
@@ -422,25 +422,14 @@ Clicking on the red text on the button bar slides the button bar left.
 					case [
 						parse usercmd ['get 'groups to end ][
 							print "get groups command received"
-							use [ group-list][
-								group-list: copy []
-								insert db-port [{select distinct channel from chat where ctype = (?)} "G"]
-								foreach record copy db-port [
-									;; send all the messages to the requester
-									if found? record/1 [
-										append group-list record/1
-									]
-								]
-								?? group-list
-								post-msg1 channel mold/all reduce [
+							post-msg1 channel mold/all reduce [
 										'cmd
-										reduce ['groups group-list]
-								]								
+										reduce ['groups get-channels]
 							]
 						]
 						parse usercmd ['show 'groups to end] [
 							use [group-list out] [
-								group-list: get-channels
+								group-list: get-channels-cnt
 								out: copy "Unique Groups and Message counts^/"
 								foreach [group cnt] group-list [
 									repend out [group " " cnt newline]
@@ -509,8 +498,8 @@ Clicking on the red text on the button bar slides the button bar left.
 								if found? ndx: find user-table ip-port [
 									; ndx/3: copy userstate
 									ndx/2/email: copy email
-									
-									insert db-port [ {update users set email = (?) where userid = (?)} channel/port/user-data/username email ]
+									; update email
+									set-email email channel/port/user-data/username
 								]
 								; now update everyone
 								update-room-status
@@ -518,10 +507,8 @@ Clicking on the red text on the button bar slides the button bar left.
 						]
 						parse usercmd ['sync set msgs-from date!] [
 							?? msgs-from
-							insert db-port [{select count(msg) from chat where msgdate >  (?)} msgs-from]
-							cnt: pick db-port 1
-							if found? cnt [cnt: cnt/1]
-							if any [none? cnt cnt = 0] [
+							cnt: count-messages msgs-from
+							if cnt = 0 [
 								reply-query channel "Eliza" rejoin ["There are no messages waiting for syncing from " msgs-from]
 							]
 							if (cnt >= 30) [
@@ -530,36 +517,32 @@ Clicking on the red text on the button bar slides the button bar left.
 							]
 							if all [cnt > 0 cnt < 30] [
 								use [err3 err4] [
-									insert db-port [{select msg, format, ctype from chat where msgdate > (?) order by msgdate asc} msgs-from]
-									post-msg1 channel mold/all reduce [
-										'cmd
-										reduce ['downloading 'started]
-									]
+									post-msg1 channel mold/all [cmd [downloading started]]
+									
 									if error? set/any 'err3 try [
-										insert db-port [{select msg, format from chat where msgdate > (?) order by msgdate asc} msgs-from]
-
-										print "new db extract"
-										foreach record copy db-port [
+										foreach record get-messages msgs-from [
 											;; send all the messages to the requester
 											?? record
-											if found? record/1 [
-												rec: to-block record/2
-												rec/1/3/3: record/1
+											if record/1 [
+												rec: first to-block record/2
+												rec/3/3: record/1
 												?? rec
-												; rec: [[gchat ["lobby"] ["Graham" 0.0.156 "lobby message" 0.0.0 240.240.240 [] 11-Feb-2006/16:11:44+13:00]]]
+												; rec: [gchat ["lobby"] ["Graham" 0.0.156 "lobby message" 0.0.0 240.240.240 [] 11-Feb-2006/16:11:44+13:00]]
 												either record/3 = "G" [
-													post-msg1 channel mold/all rec/1
+													post-msg1 channel mold/all rec
 												] [
 													; a private message - only send it if recipient is the requester
 													; or origin is the requester
 													; if the recipient of the private message is the requester, then change
 													; so that the recipient is the sender
-													if any [channel/port/user-data/username = rec/1/2/1
-														channel/port/user-data/username = rec/1/3/1] [
-														if channel/port/user-data/username = rec/1/2/1 [
-															rec/1/2/1: copy rec/1/3/1
+													if any [
+														channel/port/user-data/username = rec/2/1
+														channel/port/user-data/username = rec/3/1
+													][
+														if channel/port/user-data/username = rec/2/1 [
+															rec/2/1: copy rec/3/1
 														]
-														post-msg1 channel mold/all rec/1
+														post-msg1 channel mold/all rec
 													]
 												]
 											]
@@ -568,10 +551,7 @@ Clicking on the red text on the button bar slides the button bar left.
 										print "Database retrieve error"
 										probe mold disarm err3
 									]
-									post-msg1 channel mold/all reduce [
-										'cmd
-										reduce ['downloading 'finished]
-									]
+									post-msg1 channel mold/all [cmd [downloading finished]]
 								] ;; end of message downlaod
 							]
 						]
@@ -589,28 +569,7 @@ Clicking on the red text on the button bar slides the button bar left.
 									reduce ['downloading 'started]
 								]
 								if error? set/any 'err2 try [
-									case [
-										all [none? author none? group] [
-											insert db-port [{select msg, format, ctype from chat where msgdate > (?) order by msgdate asc} msgs-from]
-										]
-										all [none? author not none? group] [
-											; lowercase group
-											insert db-port [{select msg, format, ctype from chat where msgdate > (?) and channel = (?) order by msgdate asc} msgs-from group]
-										]
-										all [not none? author none? group] [
-											; lowercase author
-											insert db-port [{select msg, format, ctype from chat where msgdate > (?) and author = (?) order by msgdate asc} msgs-from author]
-										]
-										all [not none? author not none? group] [
-											; lowercase author lowercase group
-											insert db-port [{select msg from, format, ctype chat where msgdate > (?) and author =(?) and CHANNEL = (?) order by msgdate asc} msgs-from author group]
-										]
-									]
-
-									;									insert db-port [{select msg, format from chat where msgdate > (?) order by msgdate asc} msgs-from]
-
-									print "new db extract"
-									foreach record copy db-port [
+									foreach record (get-messages-with msgs-from author group) [
 										;; send all the messages to the requester
 										?? record
 										if found? record/1 [
@@ -824,7 +783,7 @@ Want to insert this
 							txt: copy public-msg/3/3
 							; and now we remove the txt from the message
 							public-msg/3/3: copy ""
-							insert db-port [{insert into CHAT ( author, CHANNEL, msg, format, ctype ) values (?, ?, ?, ?, ?) } public-msg/3/1 public-msg/2/1 txt public-msg ctype]
+							write-chat public-msg/3/1 public-msg/2/1 txt public-msg ctype
 							print "Public message saved into chat table"
 						] [
 							print "Insert chat message failed because..."
