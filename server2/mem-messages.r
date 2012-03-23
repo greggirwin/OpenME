@@ -16,7 +16,7 @@ defined? [ ; (set to false if not already defined)
 ]
 
 ;----------------------
-;- messages schema
+;- message schema
 ;----------------------
 mem-msg: db-mem/new "Message-table" [
 		counter:	integer!		; unique, auto increment
@@ -63,27 +63,28 @@ store-message: func [
 	msg [block!] 
 	/local gmt
 ][
-	set-fields none
+	set fields none
 	
 	counter: 	last-message-counter + 1 
 	author-id: 	author
 	group-id:	group
-	type: 		select [Public G Private P] msg/1
-	gmt: 		now
+	type: 		select [Public G Private P] msg/2
 	
-	gmt: gmt - gmt/zone	;-- transform timestamp to gmt
+	gmt: now	; transform timestamp to gmt
+	gmt: gmt - gmt/zone
+	
 	date: gmt/date
 	time: gmt/time
 	
-	insert insert tail msg counter gmt	;-- append [counter timestamp] to msg
+	insert insert tail msg counter gmt	; append [counter timestamp] to msg
 	
 	format: 	mold/flat/all/only new-line/all msg off
 	
 	all [
 		check-syntax
-		(save-message fields)	;-- update database (optional)
+		(save-message fields)	; update database (optional)
 		append-fields
-		last-message-counter: last-message-counter + 1 ;-- increment message counter only if storing ok
+		last-message-counter: last-message-counter + 1 ; increment message counter only if storing ok
 	]
 ]
 
@@ -109,6 +110,7 @@ get-last-message: func [][fetch length? data]
 get-message: func [
 	counter [integer!]
 ][
+	position: 1
 	fetch where 'counter counter
 ]
 
@@ -122,7 +124,8 @@ get-message-user: func [
 	user-id [integer!]
 ][
 	all [
-		position: where 'counter counter	; get the position based on a message counter
+		position: 1
+		position: where 'counter counter	; advance position based on a message counter
 		fetch [
 			where 'type 'G 				; from a public group
  			where 'author-id user-id	; or a private message the user authored
@@ -136,12 +139,18 @@ get-message-user: func [
 ;--------------------------
 
 LAST-MESSAGE-COUNTER: any [
-	all [(fetch length? data) counter]
+	all [
+		fetch length? data
+		counter
+	]
 	0
 ]
 
 FIRST-MESSAGE-COUNTER: any [	
-	all [(fetch 1) counter]
+	all [
+		fetch 1
+		counter
+	]
 	1
 ]
 protect [first-message-counter] ;-- not modifiable

@@ -1,12 +1,9 @@
+Application protocol for chat.
+Needs BEER framework.
+
 REBOL [
-	Description: "Implements the application protocol for PubTalk (aha the profiles)"
-
+	Description: "Implements the application protocol for chat"
 ]
-
-;;
-;; The 'L will echo back text to all initiators channels in the chatrom-peers structure
-;; An 'I PUBTALK-ETIQUETTE channel is added the chatroom-peer at chanel creation 
-
 
 register context [
 
@@ -20,7 +17,7 @@ init: func [
 	; create the private profile data
 	channel/prof-data: context [
 		username: channel/port/user-data/username
-		;user-id: get-user-id username
+		user-id: get-user-id username
 		counter: false			; current syncing message counter
 		state: #unknown-counter	; #unknown-counter | #ok | #syncing | #failure
 		count-error: 0			; number of errors sent back
@@ -41,13 +38,16 @@ init: func [
 		if error? try [request: to block! frame/payload][request: [wat!]]
 		
 		;-- state machine
-		; First, the current state is inserted in the request block,
+		; First, the current state (an issue!) is inserted in the request block,
 		;  so that one can parse the server's state and client request together.
 		; Then, the response of the server is parsed again to take actions. 
 		insert request state
 		response: [no-response]
 		
 		parse request [
+		
+			;-- Client want to know if new messages are pending.
+			;   Server begins the transfer if any.
 			[#ok | #syncing] 'sync end (
 				response: case [
 					my/counter = last-message-counter [
@@ -60,14 +60,15 @@ init: func [
 						[#ok your-counter last-message-counter]
 					]
 					true [
-						; send back new message to client
+						; send back pending message to client
 						my/counter: msg/counter
 						[#syncing new-message msg/format]
 				]
 			)
+			
+			;-- Client want to create a new message
 			| #ok 'chat [
-				['group | 'private] string! into [string! to end] end (
-					;-- New message
+				['public | 'private] string! into [string! to end] end (
 					response: case [
 						not author: get-author request/5/1	[[client-error "Author not found:" request/5/1]]
 						not group: get-group request/4		[[client-error "Group not found:" request/4]]
@@ -77,33 +78,44 @@ init: func [
 						true 								[[#syncing Ok "New message added:" last-message-counter]]
 					]
 				)
-				| (response: [client-error "Poorly formed chat request: " mold next request])
+				| (response: [client-error "Poorly formed chat request: " lf mold next request])
 			]
+			
+			;-- Client want to create new message but he's not fully synced, yet.
 			| #syncing 'chat (
-				response: [wait "You can't chat until you're synced."]
+				response: [wait "You can't chat until you're fully synced."]
 			)
+			
+			;-- Client sent its own message counter (first thing he should do)
 			| #unknown-counter 'my-counter integer! end (
 				response: case [
 					request/3 < (first-message-counter - 1) [
-						; out of range: the server does not have this first message anymore
-						; client must send a valid counter again
-						; state not modified
+						; Out of range: the server does not have this first message anymore.
+						; Client must send a valid counter again.
+						; State not modified.
 						[out-of-range first-message-counter last-message-counter]
 					]
 					request/3 >= last-message-counter [
-						; client database up-to-date
+						; Client database up-to-date, no syncing needed for now.
+						; Actually, if the last message counter of the client is higher than 
+						;  the server's one, it's abnormal. 
+						;  Maybe the server should issue an error in that case !!!
 						my/counter: last-message-counter
 						[#ok ok]
 					]
 					true [
-						my/counter: command/3
-						[#syncing ok]	; syncing requested
+						; syncing needed (Client does not possess all messages)
+						my/counter: request/3
+						[#syncing ok]
 					]
 				]
 			)
-			| issue! 'infos end ; send infos on my state (whatever is my state)
+			
+			;-- Client want to know the state of the server (debugging purpose)
+			| issue! 'infos end
 					(response: [infos mold my])
 			
+			;-- Houston! we got a problem
 			| issue! 'wat! end	; unloadable rebol value
 					(response: [client-error "Can't load this:" lf msg/payload])
 					
