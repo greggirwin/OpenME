@@ -13,6 +13,7 @@ unless value? 'db-mem.r [do %libs/db-mem.r]
 defined? [ ; (set to false if not already defined)
 	save-message	; save a message in database
 	load-messages	; load some messages from database (initialize the cache)
+	set-GU-counter  ; upate message counter of a user or a group
 ]
 
 ;----------------------
@@ -31,8 +32,24 @@ mem-msg: db-mem/new "Message-table" [
 do mem-msg/bound [
 ;--------------------------
 ;- load data from database/file
+;   Check syntax (detect database corruption) 
+;
+;   And update message counter of groups/users. Why doing this here ?
+;   Because the message counter of each group and user is not saved back each time an update occurs.
+;	It would cause to much strain (lot of small updates in the group+user database)
 ;--------------------------
 data: any [load-messages copy []]
+foreach rec data [
+	set-fields rec
+	chech-syntax
+	unless all [
+		set-GU-counter group-id counter
+		set-GU-counter author-id counter
+	][
+		print ["Group or User not found" group-id author-id]
+		halt
+	]
+]
 
 ;--------------------------
 ;- (re)build indexes 
@@ -58,8 +75,8 @@ indexed-by construct [counter: type: author-id: group-id:] ;-- order does not ma
 ;- store a message in cache
 ;--------------------------
 store-message: func [
-	author [integer!]
-	group [integer!]
+	author [integer!]	{id of an existing user}
+	group [integer!]	{id of an existing group}
 	msg [block!] 
 	/local gmt
 ][
@@ -84,7 +101,11 @@ store-message: func [
 		check-syntax
 		(save-message fields)	; update database (optional)
 		append-fields
-		last-message-counter: last-message-counter + 1 ; increment message counter only if storing ok
+		;-- also update last message counter of the associated group and author
+		(set-GU-counter group-id counter)
+		(set-GU-counter author-id counter)		
+		;-- increment global message counter only if storing successful
+		last-message-counter: counter
 	]
 ]
 

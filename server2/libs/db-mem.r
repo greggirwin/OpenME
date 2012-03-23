@@ -96,6 +96,13 @@ proto: [
 			insert/only tail data get fields
 		]	
 	]
+	
+	get-field-position: func [field [word!] /local pos][
+		all [
+			pos: find first fields field
+			-1 + index? pos
+		]
+	]
 ]
 
 rebuild-index: func [
@@ -115,8 +122,6 @@ rebuild-index: func [
 	;-- populate indexes with data
 	foreach rec proto/data proto/bound [
 		set-fields rec
-		;-- no syntax checking: Makes the code faster, but one does not detect corrupted database, worth it ?
-		;check-syntax	;WARNING
 		do code
 	]
 	;-- convert blocks to hashs
